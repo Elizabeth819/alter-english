@@ -8,10 +8,11 @@ var TEST = require('./harness.js');
 var E = require('../src/engine.js');
 var C = require('../src/catalog.js');
 var QR = require('../src/qr.js');
+var SP = require('../src/speech.js');
 var register = require('./spec.js');
 
 var h = TEST.create();
-register(h, E, C, QR);
+register(h, E, C, QR, SP);
 
 var res = h.run();
 

@@ -7,6 +7,7 @@
 
   var E = window.ALTER_ENGINE;
   var C = window.ALTER_CONTENT;
+  var SP = window.ALTER_SPEECH;
   var stage = document.getElementById('stage');
   if (!E || !C || !stage) {
     if (stage) stage.innerHTML = '<div class="empty">加载失败：请确认 src/ 目录完整。</div>';
@@ -49,6 +50,27 @@
     fails: 0,
     showCn: true
   };
+
+  /* ---------------- 语音偏好 ---------------- */
+
+  var SPEECH_OFF_KEY = 'alter.speech.off';
+  var SPEECH_INTRO_KEY = 'alter.speech.intro.v1';
+
+  function readFlag(key) {
+    try { return window.localStorage.getItem(key) === '1'; } catch (e) { return false; }
+  }
+
+  function writeFlag(key, on) {
+    try { window.localStorage.setItem(key, on ? '1' : '0'); } catch (e) { /* 隐私模式下忽略 */ }
+  }
+
+  view.speech = null;          // 最近一次比对结果
+  view.speechState = 'idle';   // idle | listening
+  view.speechInterim = '';     // 正在识别中的临时文本
+  view.speechNotice = '';      // 降级提示（不弹窗）
+  view.speechOff = readFlag(SPEECH_OFF_KEY);
+  view.speechGuide = false;    // 首次引导
+  var speechController = null;
 
   /* ---------------- 小工具 ---------------- */
 
@@ -160,6 +182,192 @@
     var y = window.scrollY;
     render();
     window.scrollTo(0, y);
+  }
+
+  /* ---------------- 开口说（语音） ---------------- */
+
+  function speechReady() {
+    return !!(SP && SP.supported && SP.supported(window));
+  }
+
+  function resetSpeech() {
+    if (speechController) {
+      speechController.abort();
+      speechController = null;
+    }
+    view.speech = null;
+    view.speechState = 'idle';
+    view.speechInterim = '';
+    view.speechNotice = '';
+    view.speechGuide = false;
+  }
+
+  function speechResultHtml(r) {
+    var cls = r.status === 'pass' ? 'ok' : r.status === 'close' ? 'half' : 'fail';
+    var heard = r.transcript ? '听到：' + esc(r.transcript) : '没有听到声音';
+    var missing = r.status !== 'unclear' && r.missing && r.missing.length
+      ? '<div class="speech-missing">没对上 ' + r.missing.map(function (w) { return '<span>' + esc(w) + '</span>'; }).join('') + '</div>'
+      : '';
+    var actions = r.status === 'pass'
+      ? '<button class="btn btn-primary btn-sm" data-action="speech-submit">交卷看分数 →</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="start-speech">再说一次</button>'
+      : '<button class="btn btn-primary btn-sm" data-action="start-speech">再说一次</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="speech-submit">用词块交卷</button>';
+
+    return '' +
+      '<div class="speech-result ' + cls + '" role="status">' +
+        '<div class="speech-head">' +
+          '<span class="speech-badge ' + r.status + '">' + r.label + '</span>' +
+          '<span class="speech-heard">' + heard + '</span>' +
+        '</div>' +
+        missing +
+        '<p class="speech-tip">语音只判断有没有真的说出口，分数仍按词块判定。</p>' +
+        '<div class="speech-actions">' + actions + '</div>' +
+      '</div>';
+  }
+
+  function speechArea(locked) {
+    if (locked || !SP) return '';
+    var privacy = '<p class="privacy-line">ALTER 不录音、不上传、不保存音频；识别由浏览器完成，只在本机比对文字。</p>';
+    if (!speechReady()) {
+      return '<div class="speech-note">这个浏览器不支持语音识别，用词块交卷一样算数。</div>' + privacy;
+    }
+    if (view.speechOff) {
+      var offMsg = view.speechNotice || '语音已关 · 用词块交卷一样算数。';
+      return '<div class="speech-note">' + esc(offMsg) + ' ' +
+        '<button class="link" data-action="speech-on">重新开启</button></div>' + privacy;
+    }
+    if (view.speechState === 'listening') {
+      return '' +
+        '<div class="listen-panel" role="status">' +
+          '<span class="listen-dot" aria-hidden="true"></span>' +
+          '<div class="listen-text"><b>正在听…</b>' +
+            '<p>念出你拼好的这句话<span id="speech-heard">' + (view.speechInterim ? '：' + esc(view.speechInterim) : '') + '</span></p>' +
+          '</div>' +
+          '<button class="btn btn-ghost btn-sm" data-action="cancel-speech">取消</button>' +
+        '</div>' + privacy;
+    }
+    if (view.speech) return speechResultHtml(view.speech) + privacy;
+
+    return '' +
+      '<div class="speech-row">' +
+        '<button class="speech-open" data-action="start-speech">🎙 开口说 · 念出这句话</button>' +
+        '<button class="link" data-action="speech-off">关掉语音</button>' +
+      '</div>' + privacy +
+      (view.speechNotice ? '<div class="speech-note">' + esc(view.speechNotice) + '</div>' : '');
+  }
+
+  function speechGuideHtml() {
+    return '' +
+      '<div class="sheet-mask" data-action="close-speech-guide">' +
+        '<div class="sheet" data-action="sheet-keep">' +
+          '<div class="sheet-emoji">🎙</div>' +
+          '<h2 class="sheet-title">先开口，再谈说得对不对</h2>' +
+          '<p class="sheet-sub">词块能拼对，不代表嘴上说得出。念一遍，才算真的会。</p>' +
+          '<ul class="guide-list">' +
+            '<li><b>会弹一次授权</b>点“开始说”后，浏览器会问你是否允许使用麦克风。</li>' +
+            '<li><b>拒绝也没关系</b>会自动回到点词块交卷，不扣分、不卡住。</li>' +
+            '<li><b>隐私与关闭</b>不录音、不上传音频；不想要了，随时可以关掉。</li>' +
+          '</ul>' +
+          '<div class="sheet-actions">' +
+            '<button class="btn btn-primary" data-action="speech-allow">开始说</button>' +
+            '<button class="btn btn-ghost" data-action="close-speech-guide">先不开口</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function startSpeech() {
+    if (!speechReady()) {
+      view.speechNotice = '这个浏览器不支持语音识别，用词块交卷一样算数。';
+      rerender();
+      return;
+    }
+    if (!view.selected.length) {
+      toast('先用词块拼出这句话，再开口');
+      return;
+    }
+    if (!readFlag(SPEECH_INTRO_KEY)) {
+      view.speechGuide = true;
+      rerender();
+      return;
+    }
+    beginListening();
+  }
+
+  function beginListening() {
+    view.speechGuide = false;
+    view.speech = null;
+    view.speechNotice = '';
+    view.speechInterim = '';
+    view.speechState = 'listening';
+    render();
+    speechController = SP.createController({ window: window });
+
+    var started = speechController.start({
+      interim: function (text) {
+        view.speechInterim = text;
+        var el = document.getElementById('speech-heard');
+        if (el) el.textContent = '：' + text;
+      },
+      result: function (res) {
+        view.speechState = 'idle';
+        view.speechInterim = '';
+        speechController = null;
+        var beat = currentBeat();
+        if (beat) view.speech = SP.matchTranscript(res.transcript, beat);
+        rerender();
+        setTimeout(function () {
+          var box = document.querySelector('.speech-result');
+          if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 80);
+      },
+      error: function (code) {
+        onSpeechError(code);
+      },
+      end: function () {
+        speechController = null;
+        if (view.speechState === 'listening') {
+          view.speechState = 'idle';
+          view.speechInterim = '';
+          view.speechNotice = '没听清，再说一次，或者直接用词块交卷。';
+          rerender();
+        }
+      }
+    });
+
+    if (!started) {
+      onSpeechError('unsupported');
+    }
+  }
+
+  function onSpeechError(code) {
+    if (code === 'aborted') return;
+    view.speechState = 'idle';
+    view.speechInterim = '';
+    speechController = null;
+    if (code === 'denied' || code === 'no-mic' || code === 'unsupported' || code === 'start-failed') {
+      view.speechOff = true;
+      writeFlag(SPEECH_OFF_KEY, true);
+      view.speechNotice = '没有拿到麦克风。用词块交卷一样能过，想再试可以点“重新开启”。';
+    } else if (code === 'no-speech') {
+      view.speechNotice = '这次没听到声音，靠近一点再说，或者直接用词块交卷。';
+    } else if (code === 'network') {
+      view.speechNotice = '语音识别暂时不可用，用词块交卷一样能过。';
+    } else {
+      view.speechNotice = '这次没识别成功，用词块交卷一样能过。';
+    }
+    rerender();
+  }
+
+  function cancelSpeech() {
+    if (speechController) {
+      speechController.abort();
+      speechController = null;
+    }
+    view.speechState = 'idle';
+    view.speechInterim = '';
+    rerender();
   }
 
   /* ---------------- 顶栏 / 底栏 ---------------- */
@@ -340,7 +548,7 @@
         '<button class="btn btn-primary" data-action="start-scene">' +
           (isResume ? '继续演 · 第 ' + (idx + 1) + ' 幕' : '开始这一集') +
         '</button>' +
-        '<p class="sub" style="margin-top:14px;text-align:center;font-size:12px">用词块拼出你要说的话。说对了，剧情才会往下走。</p>' +
+        '<p class="sub" style="margin-top:14px;text-align:center;font-size:12px">先用词块拼出你要说的话；想更接近真的会，就再开口念一遍。</p>' +
       '</div>';
     updateChrome();
   }
@@ -450,12 +658,15 @@
         '<div class="answer-zone' + (view.selected.length ? ' filled' : '') + '">' + answer + '</div>' +
         '<div class="bank' + (locked ? ' frozen' : '') + '">' + bank + '</div>' +
 
+        speechArea(locked) +
+
         '<div class="play-actions">' +
           '<button class="btn btn-ghost" data-action="clear"' + (locked ? ' disabled' : '') + '>清空</button>' +
-          '<button class="btn btn-primary" data-action="submit"' + (locked ? ' disabled' : '') + '>说出口</button>' +
+          '<button class="btn btn-primary" data-action="submit"' + (locked ? ' disabled' : '') + '>交卷</button>' +
         '</div>' +
 
         (view.feedback ? feedbackHtml(beat, view.feedback) : '') +
+        (view.speechGuide ? speechGuideHtml() : '') +
       '</div>';
 
     updateChrome();
@@ -781,6 +992,7 @@
       loadAllSeasons().then(function () { startReview(); });
       return;
     }
+    resetSpeech();
     var today = todayKey();
     var items = E.reviewDue(state, today);
     var list = [];
@@ -844,11 +1056,13 @@
         '</div>' +
         '<div class="answer-zone' + (view.selected.length ? ' filled' : '') + '">' + answer + '</div>' +
         '<div class="bank' + (locked ? ' frozen' : '') + '">' + bank + '</div>' +
+        speechArea(locked) +
         '<div class="play-actions">' +
           '<button class="btn btn-ghost" data-action="clear"' + (locked ? ' disabled' : '') + '>清空</button>' +
-          '<button class="btn btn-primary" data-action="submit"' + (locked ? ' disabled' : '') + '>说出口</button>' +
+          '<button class="btn btn-primary" data-action="submit"' + (locked ? ' disabled' : '') + '>交卷</button>' +
         '</div>' +
         (view.feedback ? feedbackHtml(beat, view.feedback) : '') +
+        (view.speechGuide ? speechGuideHtml() : '') +
       '</div>';
     updateChrome();
   }
@@ -870,6 +1084,7 @@
 
   function nextReview() {
     if (!view.review) return renderBook();
+    resetSpeech();
     view.feedback = null;
     view.selected = [];
     view.fails = 0;
@@ -927,6 +1142,7 @@
   }
 
   function goHome() {
+    resetSpeech();
     view.screen = 'home';
     view.sceneId = null;
     view.feedback = null;
@@ -944,6 +1160,7 @@
       toast('先完成上一集，才会解锁');
       return;
     }
+    resetSpeech();
     view.sceneId = id;
     if (firstUnpassedIndex(scene) < 0) {
       view.index = beatsOf(scene).length - 1;
@@ -961,6 +1178,7 @@
   function nextBeat() {
     var scene = byId(view.sceneId);
     var list = beatsOf(scene);
+    resetSpeech();
     view.feedback = null;
     view.selected = [];
     view.fails = 0;
@@ -978,6 +1196,7 @@
   function submitAnswer() {
     if (view.feedback && view.feedback.passed) return;
     if (!view.selected.length) { toast('先点词块拼一句话'); return; }
+    resetSpeech();
     var beat = currentBeat();
     if (!beat) return;
     var picked = view.selected.map(function (i) { return beat.chips[i]; });
@@ -1091,6 +1310,7 @@
         break;
 
       case 'start-scene':
+        resetSpeech();
         view.screen = 'play';
         view.feedback = null;
         view.selected = [];
@@ -1102,6 +1322,7 @@
         if (view.feedback && view.feedback.passed) return;
         var i = Number(el.getAttribute('data-i'));
         if (view.selected.indexOf(i) > -1) return;
+        resetSpeech();
         view.selected.push(i);
         rerender();
         break;
@@ -1110,12 +1331,14 @@
       case 'unpick-chip': {
         if (view.feedback && view.feedback.passed) return;
         var pos = Number(el.getAttribute('data-pos'));
+        resetSpeech();
         view.selected.splice(pos, 1);
         rerender();
         break;
       }
 
       case 'clear':
+        resetSpeech();
         view.selected = [];
         rerender();
         break;
@@ -1125,12 +1348,14 @@
         break;
 
       case 'retry':
+        resetSpeech();
         view.feedback = null;
         view.selected = [];
         rerender();
         break;
 
       case 'fill-answer':
+        resetSpeech();
         fillAnswer();
         break;
 
@@ -1154,6 +1379,45 @@
 
       case 'speak':
         speak(el.getAttribute('data-text'));
+        break;
+
+      case 'start-speech':
+        startSpeech();
+        break;
+
+      case 'speech-allow':
+        writeFlag(SPEECH_INTRO_KEY, true);
+        beginListening();
+        break;
+
+      case 'close-speech-guide':
+        view.speechGuide = false;
+        rerender();
+        break;
+
+      case 'cancel-speech':
+        cancelSpeech();
+        break;
+
+      case 'speech-submit':
+        resetSpeech();
+        submitAnswer();
+        break;
+
+      case 'speech-off':
+        resetSpeech();
+        view.speechOff = true;
+        writeFlag(SPEECH_OFF_KEY, true);
+        rerender();
+        break;
+
+      case 'speech-on':
+        view.speechOff = false;
+        writeFlag(SPEECH_OFF_KEY, false);
+        rerender();
+        break;
+
+      case 'sheet-keep':
         break;
 
       case 'save-phrase': {

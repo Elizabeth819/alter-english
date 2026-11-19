@@ -15,7 +15,8 @@ Teen English apps are good at making you *remember* words (flashcards, streaks, 
 1. **Output first.** You get a Chinese intent ("she's asking if the seat is taken — let her sit") and a bank of **chunks** (`go ahead`, `if you don't mind`, `came out wrong`). You assemble the sentence yourself.
 2. **Instant, honest feedback.** A 5-level naturalness verdict, the native version, and one line explaining *why* — e.g. `"all yours"` feels native, `"you can sit"` sounds like a textbook. You must get it right to continue.
 3. **A serialized story in 3 seasons.** 15 episodes: school life → first job, travel, family negotiations, a foreign friend, graduation. Every episode ends with a two-way choice that is remembered; the next episode opens by referring to what you picked.
-4. **A shareable artifact.** Each episode ends with a poster card ("the scene you made") you can download and send to friends.
+4. **Say it out loud.** Once the line is assembled, tap **开口说** and actually say it. The browser transcribes your speech; a tolerant matcher forgives contractions, connected speech, filler words and small word-order slips, then tells you *said it / almost / didn't catch that* and which words it missed. No audio is recorded, uploaded or stored — only the recognized text is compared on-device. If speech recognition is unavailable or mic permission is denied, the app falls back to chip submission automatically.
+5. **A shareable artifact.** Each episode ends with a poster card ("the scene you made") you can download and send to friends.
 
 You pick a **persona** (The Softie / The Roaster / The Wildcard). It changes the closing narration of every episode and the card styling — self-expression, not just correctness.
 
@@ -25,15 +26,17 @@ You pick a **persona** (The Softie / The Roaster / The Wildcard). It changes the
 - Difficulty ramps by season: A2–B1 (school) → B1 (first job / travel / family / online friend) → B2 (interview, flight disruption, argument, online event, farewell)
 - **Daily pacing:** home shows one clear "today's 3 minutes". The next episode unlocks tomorrow; finishing today's episode does not hard-block you — the next one is still playable, marked as early access
 - **Review queue:** lines you got wrong (or only "ok") come back on a forgetting curve; only a correct answer in review removes them
+- **Say-it-out-loud check:** speak the line you just assembled; tolerant transcript matching (contractions, reductions, fillers, minor word-order slips) marks it 说对了 / 差一点 / 没听清 and lists missed words. Scoring stays on the original 5-level scale — speaking is an extra "did you actually say it" signal, never a score change
+- **Graceful speech fallback:** unsupported browsers or a denied microphone return to chip submission automatically, with a quiet inline note (no error dialog). First use shows a one-time guide covering why speak, the permission prompt, privacy, and how to turn it off
 - 3 personas, XP, daily streak, "native lines" counter, total progress
 - 2-way branches with distinct endings; the next episode contains a `callbacks` block keyed by the previous choice, so every branch is referenced later
 - Canvas-generated share card (1080×1350 PNG) with the episode number, native-line count and a **scannable QR code** to the live app
 - Phrase book: save / replay / delete the lines you actually said
 - Built-in TTS for every NPC line (Web Speech API, no key)
 - Installable PWA with offline cache; seasons load on demand and a first-paint skeleton keeps weak networks from showing a white screen
-- 51 automated tests, zero dependencies
+- 66 automated tests, zero dependencies
 
-**Not in scope yet:** accounts & cloud sync, LLM free chat, speech scoring, friends/leaderboards, payments. The MVP deliberately proves the core loop with no backend and no API keys.
+**Not in scope yet:** accounts & cloud sync, LLM free chat, pronunciation scoring (we only check which words were heard), friends/leaderboards, payments. The MVP deliberately proves the core loop with no backend and no API keys.
 
 ## Run it
 
@@ -51,12 +54,12 @@ No build step, no `npm install`, no environment variables, no secrets.
 ## Tests
 
 ```bash
-node tests/run.js        # 51/51 passing, Node >= 12, no dependencies
+node tests/run.js        # 66/66 passing, Node >= 12, no dependencies
 ```
 
 Or open `tests/test.html` in a browser — same suite, zero install.
 
-Coverage: scoring (5 grades, normalization, multi-answer best pick), XP anti-farming, unlock chain, scene state machine, storage migration, streak, phrase book, **daily pacing** (today's episode, next-day unlock, early-access flag, legacy state fallback), **review scheduling** (wrong → today, "ok" → +3 days, review pass removes / fail postpones), **QR generation** (finder/timing patterns, capacity guard, deterministic output), **content integrity** (every reference answer must be assemblable from its chunk bank; no Chinese in English lines; tips ≤ 2 sentences; every episode declares a valid season and carries callbacks for both branches of the previous episode), and an end-to-end simulation playing all 135 turns and finishing all 15 episodes.
+Coverage: scoring (5 grades, normalization, multi-answer best pick), XP anti-farming, unlock chain, scene state machine, storage migration, streak, phrase book, **daily pacing** (today's episode, next-day unlock, early-access flag, legacy state fallback), **review scheduling** (wrong → today, "ok" → +3 days, review pass removes / fail postpones), **QR generation** (finder/timing patterns, capacity guard, deterministic output), **speech matching** (contractions, connected speech/reductions, fillers, small word-order slips, several missing words, completely off-topic, empty transcript, best of multiple answers) and a **fake-recognition controller** (result, denial, abort, unsupported — no real microphone involved), **content integrity** (every reference answer must be assemblable from its chunk bank; no Chinese in English lines; tips ≤ 2 sentences; every episode declares a valid season and carries callbacks for both branches of the previous episode), and an end-to-end simulation playing all 135 turns and finishing all 15 episodes.
 
 ## Stack
 
@@ -69,10 +72,11 @@ src/seasons/season2.js  season 2: episodes 6–10 (loaded on demand)
 src/seasons/season3.js  season 3: episodes 11–15 (loaded on demand)
 src/catalog.js          merges loaded seasons into window.ALTER_CONTENT
 src/engine.js           scoring, progress, daily pacing, review queue, storage, validator
+src/speech.js           tolerant transcript matching + Web Speech recognition controller
 src/qr.js               fixed-version QR encoder (share card link, zero deps)
-src/app.js              UI: routing, rendering, events, canvas card, TTS
+src/app.js              UI: routing, rendering, events, speech flow, canvas card, TTS
 src/styles.css          all styles
-tests/                  harness + 51 specs + node/browser runners
+tests/                  harness + 66 specs + node/browser runners
 docs/product.md         product thinking (Chinese)
 docs/README.zh-CN.md    full Chinese guide
 ```
@@ -83,12 +87,13 @@ Append an object to the last season file (or add a new season file and register 
 
 ## Status
 
-v1.1 — retention pass. Daily pacing, a review queue, a QR-equipped share card, on-demand season loading and a resilient offline cache are live. 15 episodes playable end to end. Next: adaptive hints based on past accuracy, read-aloud comparison, share-link challenges, then accounts and cloud sync.
+v1.2 — speaking pass. You can now say the assembled line out loud; browser speech recognition feeds a tolerant matcher that runs entirely on-device, with automatic fallback to chip submission and a one-time privacy guide. Daily pacing, review queue, QR share card and offline cache remain. 15 episodes playable end to end. Next: adaptive hints based on past accuracy, pronunciation-level feedback, share-link challenges, then accounts and cloud sync.
 
 ## Notes
 
 - The UI is in Simplified Chinese by design — the learners are Chinese students; the **learning content is English**.
 - No accounts, no analytics, no network requests. Progress lives in `localStorage` and can be erased in-app.
+- Speech: we never record, upload or store audio; recognition is performed by the browser and only the resulting text is compared locally. Speech is optional and can be turned off at any time.
 - Speech volume/voice depends on the OS; no cloud TTS is used.
 
 ## License

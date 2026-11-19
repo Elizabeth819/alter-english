@@ -4,7 +4,7 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory;
   else root.registerAlterTests = factory;
-})(typeof self !== 'undefined' ? self : this, function (h, E, C, QR) {
+})(typeof self !== 'undefined' ? self : this, function (h, E, C, QR, SP) {
   'use strict';
 
   var SCENES = C.SCENES;
@@ -548,5 +548,154 @@
     h.eq(E.sceneUnlocked(s, SCENES, 1), true);
     var next = E.nextUp(s, SCENES);
     h.eq(next.scene.id, SCENES[1].id);
+  });
+
+  /* ---------------- 12. 语音识别文本比对 ---------------- */
+
+  var speechBeat = function (text) {
+    return { id: 'speech-test', solutions: [{ text: text, level: 'native', note: '' }] };
+  };
+
+  h.test('语音比对：逐字念对 → 说对了', function () {
+    var r = SP.matchTranscript('No, it is all yours.', speechBeat("No, it's all yours."));
+    h.eq(r.status, 'pass');
+    h.eq(r.label, '说对了');
+    h.deepEq(r.missing, []);
+  });
+
+  h.test('语音比对：大小写、标点、多余空格都不影响', function () {
+    var r = SP.matchTranscript('  THAT   WOULD BE GREAT, THANKS! ', speechBeat("That'd be great, thanks."));
+    h.eq(r.status, 'pass');
+    h.eq(r.transcript, 'THAT   WOULD BE GREAT, THANKS!');
+  });
+
+  h.test('语音比对：缩写与完整写法互通（I am going to / I\'m gonna）', function () {
+    var r = SP.matchTranscript('I am going to grab a coffee', speechBeat("I'm gonna grab a coffee."));
+    h.eq(r.status, 'pass');
+    h.eq(r.coverage, 1);
+  });
+
+  h.test('语音比对：连读/弱写（lemme → let me）能对上', function () {
+    var r = SP.matchTranscript('lemme take a look', speechBeat('Let me take a look.'));
+    h.eq(r.status, 'pass');
+    h.deepEq(r.missing, []);
+  });
+
+  h.test('语音比对：词序小偏差仍算说对了', function () {
+    var r = SP.matchTranscript("no it's yours all", speechBeat("No, it's all yours."));
+    h.eq(r.status, 'pass');
+    h.eq(r.coverage, 1);
+    h.ok(r.order < 1, '应识别出语序有小偏差');
+  });
+
+  h.test('语音比对：多词漏说 → 差一点，并指出漏掉的词', function () {
+    var r = SP.matchTranscript("I'm going to get coffee", speechBeat('I am going to grab a coffee.'));
+    h.eq(r.status, 'close');
+    h.eq(r.label, '差一点');
+    h.deepEq(r.missing, ['grab', 'a']);
+    h.ok(r.coverage < 0.9);
+  });
+
+  h.test('语音比对：完全跑偏 → 没听清', function () {
+    var r = SP.matchTranscript('Sorry, I am busy.', speechBeat("No, it's all yours."));
+    h.eq(r.status, 'unclear');
+    h.eq(r.label, '没听清');
+  });
+
+  h.test('语音比对：空识别结果 → 没听清', function () {
+    var r = SP.matchTranscript('', speechBeat("No, it's all yours."));
+    h.eq(r.status, 'unclear');
+    h.ok(r.missing.length > 0, '应给出参考句里没听到的词');
+  });
+
+  h.test('语音比对：语气词（um/uh）不算多说', function () {
+    var r = SP.matchTranscript("um, uh, I'm gonna grab a coffee", speechBeat("I'm gonna grab a coffee."));
+    h.eq(r.status, 'pass');
+    h.deepEq(r.extra, []);
+  });
+
+  h.test('语音比对：多个参考答案时取最匹配的一条', function () {
+    var b = {
+      id: 'multi',
+      solutions: [
+        { text: 'Go ahead.', level: 'ok' },
+        { text: "No, it's all yours.", level: 'native' }
+      ]
+    };
+    var r = SP.matchTranscript('no it is all yours', b);
+    h.eq(r.status, 'pass');
+    h.eq(r.solution, "No, it's all yours.");
+  });
+
+  h.test('语音比对：缺少 solutions 时抛错', function () {
+    h.throws(function () { SP.matchTranscript('hello', { id: 'bad', solutions: [] }); });
+  });
+
+  /* ---------------- 13. 语音识别控制器（假结果，不碰麦克风） ---------------- */
+
+  function FakeRecognition() {
+    FakeRecognition.last = this;
+    this.started = false;
+    this.aborted = false;
+    this.start = function () { this.started = true; };
+    this.stop = function () {};
+    this.abort = function () { this.aborted = true; };
+  }
+
+  h.test('语音控制器：没有浏览器识别能力时报告不支持', function () {
+    var ctrl = SP.createController({ window: {}, factory: null });
+    h.eq(ctrl.supported, false);
+    var err = null;
+    var ok = ctrl.start({ error: function (code) { err = code; } });
+    h.eq(ok, false);
+    h.eq(err, 'unsupported');
+    h.eq(SP.supported({}), false);
+    h.eq(SP.supported({ webkitSpeechRecognition: FakeRecognition }), true);
+  });
+
+  h.test('语音控制器：假识别结果能回调文本，且只结束一次', function () {
+    var got = null;
+    var ends = 0;
+    var interim = [];
+    var ctrl = SP.createController({ window: {}, factory: FakeRecognition });
+    ctrl.start({
+      interim: function (t) { interim.push(t); },
+      result: function (r) { got = r.transcript; },
+      end: function () { ends += 1; }
+    });
+    h.eq(FakeRecognition.last.started, true);
+    FakeRecognition.last.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'no it is' }, isFinal: false }] });
+    FakeRecognition.last.onresult({ resultIndex: 0, results: [{ 0: { transcript: "no it's all yours" }, isFinal: true }] });
+    FakeRecognition.last.onend();
+    h.eq(got, "no it's all yours");
+    h.deepEq(interim, ['no it is']);
+    h.eq(ends, 1);
+  });
+
+  h.test('语音控制器：麦克风被拒绝 → denied，不死循环', function () {
+    var err = null;
+    var ends = 0;
+    var ctrl = SP.createController({ window: {}, factory: FakeRecognition });
+    ctrl.start({ error: function (code) { err = code; }, end: function () { ends += 1; } });
+    FakeRecognition.last.onerror({ error: 'not-allowed' });
+    FakeRecognition.last.onend();
+    h.eq(err, 'denied');
+    h.eq(ends, 1);
+  });
+
+  h.test('语音控制器：主动取消后不再回调', function () {
+    var called = 0;
+    var ctrl = SP.createController({ window: {}, factory: FakeRecognition });
+    ctrl.start({
+      result: function () { called += 1; },
+      interim: function () { called += 1; },
+      error: function () { called += 1; },
+      end: function () { called += 1; }
+    });
+    ctrl.abort();
+    FakeRecognition.last.onresult({ resultIndex: 0, results: [{ 0: { transcript: 'hi' }, isFinal: true }] });
+    FakeRecognition.last.onend();
+    h.eq(FakeRecognition.last.aborted, true);
+    h.eq(called, 0);
   });
 });

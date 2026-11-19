@@ -35,6 +35,7 @@
 
   <script src="../src/engine.js"></script>
   <script src="../src/qr.js"></script>
+  <script src="../src/speech.js"></script>
   <script src="../src/content.js"></script>
   <script src="../src/seasons/season2.js"></script>
   <script src="../src/seasons/season3.js"></script>
@@ -44,7 +45,7 @@
   <script>
     (function () {
       var h = window.ALTER_TEST.create();
-      window.registerAlterTests(h, window.ALTER_ENGINE, window.ALTER_CONTENT, window.ALTER_QR);
+      window.registerAlterTests(h, window.ALTER_ENGINE, window.ALTER_CONTENT, window.ALTER_QR, window.ALTER_SPEECH);
       var res = h.run();
       var summary = document.getElementById('summary');
       summary.className = 'summary ' + (res.failed ? 'fail' : 'pass');
