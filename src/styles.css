@@ -277,7 +277,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
   margin: 24px 0 10px;
 }
 
-.scene-list { display: grid; gap: 10px; }
+.scene-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 
 .season-head {
   display: flex;
@@ -298,6 +298,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
   align-items: center;
   gap: 14px;
   width: 100%;
+  min-width: 0;
   text-align: left;
   padding: 14px;
   border-radius: 18px;
