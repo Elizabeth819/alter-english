@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ALTER · 另一个我 —— 用英语活另一种人生</title>
+  <meta name="description" content="ALTER 是一款「英语分身」剧情口语 App：用词块拼出你该说的话，让剧情往下走。3 分钟一集，5 集连载。" />
+  <meta name="theme-color" content="#08080c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="assets/icon.svg" />
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <div class="app">
+    <header class="topbar">
+      <button class="brand" data-action="go-home" aria-label="回到首页">ALTER<span class="brand-dot">·</span></button>
+      <div class="topstats">
+        <span class="pill" id="pill-xp">0 XP</span>
+        <span class="pill" id="pill-streak">🔥 0</span>
+      </div>
+      <button class="icon-btn" data-action="go-book" aria-label="句子本">📓</button>
+    </header>
+
+    <main id="stage" class="stage" aria-live="polite"></main>
+
+    <nav class="tabbar" aria-label="主导航">
+      <button class="tab on" data-tab="home" data-action="go-home">剧情</button>
+      <button class="tab" data-tab="book" data-action="go-book">句子本</button>
+      <button class="tab" data-tab="persona" data-action="go-persona">人设</button>
+    </nav>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="src/content.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ALTER · 核心逻辑测试</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 28px 20px 60px; background: #08080c; color: #f4f4f8;
+      font: 14px/1.6 "Segoe UI", -apple-system, "Microsoft YaHei", sans-serif;
+    }
+    .wrap { max-width: 780px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: 0.08em; }
+    .sub { color: #9a9aae; font-size: 13px; margin-bottom: 18px; }
+    .summary { padding: 14px 16px; border-radius: 14px; margin-bottom: 16px; font-weight: 700; }
+    .summary.pass { background: rgba(201,247,93,.12); border: 1px solid rgba(201,247,93,.4); color: #c9f75d; }
+    .summary.fail { background: rgba(255,107,107,.1); border: 1px solid rgba(255,107,107,.4); color: #ff9c9c; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 13px; }
+    li.ok { color: #c9f75d; }
+    li.no { color: #ff9c9c; }
+    li pre { white-space: pre-wrap; margin: 6px 0 0; color: #ffb3b3; font-size: 12px; }
+    a { color: #a78bfa; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ALTER / TESTS</h1>
+    <div class="sub">核心逻辑自动化测试（与 <code>node tests/run.js</code> 同一套用例）</div>
+    <div id="summary" class="summary">运行中…</div>
+    <ul id="list"></ul>
+    <p class="sub" style="margin-top:22px"><a href="../index.html">← 回到 App</a></p>
+  </div>
+
+  <script src="../src/engine.js"></script>
+  <script src="../src/content.js"></script>
+  <script src="harness.js"></script>
+  <script src="spec.js"></script>
+  <script>
+    (function () {
+      var h = window.ALTER_TEST.create();
+      window.registerAlterTests(h, window.ALTER_ENGINE, window.ALTER_CONTENT);
+      var res = h.run();
+      var summary = document.getElementById('summary');
+      summary.className = 'summary ' + (res.failed ? 'fail' : 'pass');
+      summary.textContent = (res.failed ? '✗ ' : '✓ ') + '通过 ' + res.passed + ' / ' + res.total + '，失败 ' + res.failed;
+      document.title = (res.failed ? 'FAIL ' : 'PASS ') + res.passed + '/' + res.total + ' · ALTER';
+      var list = document.getElementById('list');
+      res.results.forEach(function (r) {
+        var li = document.createElement('li');
+        li.className = r.pass ? 'ok' : 'no';
+        li.textContent = (r.pass ? '✓ ' : '✗ ') + r.name;
+        if (!r.pass) {
+          var pre = document.createElement('pre');
+          pre.textContent = r.error;
+          li.appendChild(pre);
+        }
+        list.appendChild(li);
+      });
+    })();
+  </script>
+</body>
+</html>

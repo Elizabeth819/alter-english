@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ALTER · 测试夹具（写入进度）</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 40px 22px; background: #08080c; color: #f4f4f8;
+      font: 14px/1.7 "Segoe UI", "Microsoft YaHei", sans-serif; }
+    .wrap { max-width: 520px; margin: 0 auto; }
+    h1 { font-size: 20px; letter-spacing: .06em; }
+    .sub { color: #9a9aae; }
+    a.btn { display: inline-block; margin-top: 18px; padding: 12px 20px; border-radius: 12px;
+      background: #c9f75d; color: #101408; font-weight: 700; text-decoration: none; }
+    pre { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+      border-radius: 12px; padding: 12px; font-size: 12px; color: #c9f75d; overflow: auto; }
+    button { margin-top: 10px; padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15);
+      background: rgba(255,255,255,.06); color: #f4f4f8; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ALTER / TEST FIXTURE</h1>
+    <p class="sub">仅用于验收「结算页 / 名场面卡」等需要前置进度的界面。打开本页会写入本地进度（覆盖现有进度）。</p>
+    <pre id="out">准备写入…</pre>
+    <button id="seed">重新写入</button>
+    <a class="btn" href="../index.html">打开 App →</a>
+  </div>
+
+  <script src="../src/content.js"></script>
+  <script src="../src/engine.js"></script>
+  <script>
+    (function () {
+      var E = window.ALTER_ENGINE;
+      var C = window.ALTER_CONTENT;
+      // mode=done（默认）：第 1 集全通过并已选分支 → 直接看结算页
+      // mode=last：只差最后一幕 → 用来验收「最后一幕 → 分支页」
+      var mode = 'done';
+      try { mode = new URLSearchParams(location.search).get('mode') || 'done'; } catch (e) { /* 老浏览器忽略 */ }
+
+      function build() {
+        var s = E.createState();
+        s.persona = 'snark';
+        s.streak = 2;
+        s.lastDay = E.dayKey(new Date());
+        var beats = E.flattenBeats(C.SCENES[0]);
+        var upto = mode === 'last' ? beats.length - 1 : beats.length;
+        beats.slice(0, upto).forEach(function (x) {
+          s.passed[x.beat.id] = 'native';
+          s.attempts[x.beat.id] = 1;
+        });
+        s.nativeCount = upto;
+        s.xp = upto * 10;
+        if (mode !== 'last') {
+          s.choices[C.SCENES[0].id] = C.SCENES[0].choice.options[0].id;
+          s.outcomes[C.SCENES[0].id] = C.SCENES[0].choice.options[0].outcome;
+        }
+        s.saved = [{
+          text: "That'd be great, thanks.",
+          note: '“That’d be great” 是接受帮助的万能句。',
+          sceneId: C.SCENES[0].id,
+          sceneTitle: C.SCENES[0].cn,
+          day: E.dayKey(new Date())
+        }];
+        return s;
+      }
+
+      function write() {
+        var s = build();
+        try {
+          localStorage.setItem(E.STORAGE_KEY, JSON.stringify(s));
+          document.getElementById('out').textContent =
+            '已写入（mode=' + mode + '）：user=' + s.persona + ' · xp=' + s.xp + ' · passed=' +
+            Object.keys(s.passed).length + ' · 场景1分支=' + (s.choices[C.SCENES[0].id] || '未选择');
+        } catch (e) {
+          document.getElementById('out').textContent = '写入失败：' + e.message;
+        }
+      }
+
+      document.getElementById('seed').addEventListener('click', write);
+      write();
+    })();
+  </script>
+</body>
+</html>
