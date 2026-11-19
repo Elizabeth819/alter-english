@@ -22,40 +22,55 @@
 <body>
   <div class="wrap">
     <h1>ALTER / TEST FIXTURE</h1>
-    <p class="sub">仅用于验收「结算页 / 名场面卡」等需要前置进度的界面。打开本页会写入本地进度（覆盖现有进度）。</p>
+    <p class="sub">仅用于验收「结算页 / 名场面卡 / 第二三季」等需要前置进度的界面。打开本页会写入本地进度（覆盖现有进度）。</p>
     <pre id="out">准备写入…</pre>
     <button id="seed">重新写入</button>
     <a class="btn" href="../index.html">打开 App →</a>
   </div>
 
   <script src="../src/content.js"></script>
+  <script src="../src/seasons/season2.js"></script>
+  <script src="../src/seasons/season3.js"></script>
+  <script src="../src/catalog.js"></script>
   <script src="../src/engine.js"></script>
   <script>
     (function () {
       var E = window.ALTER_ENGINE;
       var C = window.ALTER_CONTENT;
+      var params = new URLSearchParams(location.search);
       // mode=done（默认）：第 1 集全通过并已选分支 → 直接看结算页
       // mode=last：只差最后一幕 → 用来验收「最后一幕 → 分支页」
-      var mode = 'done';
-      try { mode = new URLSearchParams(location.search).get('mode') || 'done'; } catch (e) { /* 老浏览器忽略 */ }
+      // unlock=<sceneId>：把该集之前的全部集数做完并选好分支 → 直接能玩该集
+      var mode = params.get('mode') || 'done';
+      var unlock = params.get('unlock') || '';
+
+      function passScene(state, scene, complete) {
+        var beats = E.flattenBeats(scene);
+        beats.forEach(function (x) {
+          state.passed[x.beat.id] = 'native';
+          state.attempts[x.beat.id] = 1;
+          state.nativeCount += 1;
+          state.xp += 10;
+        });
+        if (complete !== false) {
+          var opt = scene.choice.options[0];
+          state.choices[scene.id] = opt.id;
+          state.outcomes[scene.id] = opt.outcome;
+        }
+        return beats.length;
+      }
 
       function build() {
         var s = E.createState();
         s.persona = 'snark';
         s.streak = 2;
         s.lastDay = E.dayKey(new Date());
-        var beats = E.flattenBeats(C.SCENES[0]);
-        var upto = mode === 'last' ? beats.length - 1 : beats.length;
-        beats.slice(0, upto).forEach(function (x) {
-          s.passed[x.beat.id] = 'native';
-          s.attempts[x.beat.id] = 1;
-        });
-        s.nativeCount = upto;
-        s.xp = upto * 10;
-        if (mode !== 'last') {
-          s.choices[C.SCENES[0].id] = C.SCENES[0].choice.options[0].id;
-          s.outcomes[C.SCENES[0].id] = C.SCENES[0].choice.options[0].outcome;
+        var target = 0;
+        if (unlock) {
+          for (var i = 0; i < C.SCENES.length; i++) if (C.SCENES[i].id === unlock) target = i;
         }
+        for (var i = 0; i < target; i++) passScene(s, C.SCENES[i], true);
+        if (target === 0) passScene(s, C.SCENES[0], mode !== 'last');
         s.saved = [{
           text: "That'd be great, thanks.",
           note: '“That’d be great” 是接受帮助的万能句。',
@@ -63,16 +78,20 @@
           sceneTitle: C.SCENES[0].cn,
           day: E.dayKey(new Date())
         }];
-        return s;
+        return { state: s, target: target };
       }
 
       function write() {
-        var s = build();
+        var built = build();
+        var s = built.state;
+        var scene = C.SCENES[built.target];
         try {
           localStorage.setItem(E.STORAGE_KEY, JSON.stringify(s));
           document.getElementById('out').textContent =
-            '已写入（mode=' + mode + '）：user=' + s.persona + ' · xp=' + s.xp + ' · passed=' +
-            Object.keys(s.passed).length + ' · 场景1分支=' + (s.choices[C.SCENES[0].id] || '未选择');
+            '已写入（mode=' + mode + (unlock ? ', unlock=' + unlock : '') + '）：\n' +
+            '当前可玩：第 ' + (built.target + 1) + ' 集「' + scene.cn + '」（' + scene.id + '，季 ' + scene.season + '）\n' +
+            'user=' + s.persona + ' · xp=' + s.xp + ' · passed=' + Object.keys(s.passed).length +
+            ' · 已选分支=' + Object.keys(s.choices).length;
         } catch (e) {
           document.getElementById('out').textContent = '写入失败：' + e.message;
         }

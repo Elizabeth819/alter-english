@@ -261,6 +261,18 @@
     return scene.personaClose[personaId] || scene.personaClose.warm || '';
   }
 
+  /** 上一集的分支结果，在本集开场被引用。没有上一集 / 没选过 → 返回空串。 */
+  function sceneCallback(state, scenes, sceneId) {
+    var index = -1;
+    for (var i = 0; i < scenes.length; i++) if (scenes[i].id === sceneId) index = i;
+    if (index <= 0) return '';
+    var scene = scenes[index];
+    var prev = scenes[index - 1];
+    if (!scene.callbacks) return '';
+    var picked = state.choices[prev.id];
+    return scene.callbacks[picked] || scene.callbacks[prev.choice.options[0].id] || '';
+  }
+
   function totalStats(state, scenes) {
     var total = 0;
     var passed = 0;
@@ -339,6 +351,11 @@
 
   /* ---------------- 内容完整性校验（测试用） ---------------- */
 
+  function countSentences(text) {
+    // 只数中文句末标点：引号里的英文问号不算“一句”
+    return (String(text || '').match(/[。！？]/g) || []).length;
+  }
+
   function validateContent(scenes, personas) {
     var errors = [];
     var seenScene = {};
@@ -346,6 +363,7 @@
     var seenBeat = {};
     var personaIds = (personas || []).map(function (p) { return p.id; });
     var badStrings = /(TODO|FIXME|占位|lorem ipsum|placeholder)/i;
+    var cnChars = /[\u4e00-\u9fa5]/;
 
     if (!Array.isArray(scenes) || scenes.length < 1) errors.push('scenes 为空');
 
@@ -365,6 +383,21 @@
           if (optIds[opt.id]) errors.push(scene.id + ' 重复分支 id: ' + opt.id);
           optIds[opt.id] = true;
         });
+      }
+      if (si > 0) {
+        var prev = scenes[si - 1];
+        if (!scene.callbacks) {
+          errors.push(scene.id + ' 缺少 callbacks（必须引用上一集分支）');
+        } else {
+          prev.choice.options.forEach(function (opt) {
+            var line = scene.callbacks[opt.id];
+            if (!line) errors.push(scene.id + ' callbacks 缺少分支 "' + opt.id + '" 的承接文案');
+            else if (badStrings.test(line)) errors.push(scene.id + ' callbacks 含占位文本');
+          });
+        }
+      }
+      if (typeof scene.season !== 'number' || scene.season < 1 || scene.season > 3) {
+        errors.push(scene.id + ' 缺少合法的 season 字段');
       }
       personaIds.forEach(function (pid) {
         if (!scene.personaClose || !scene.personaClose[pid]) errors.push(scene.id + ' 缺少人设结算文案: ' + pid);
@@ -386,6 +419,8 @@
             else if (badStrings.test(beat[k])) errors.push(beat.id + ' 含占位文本: ' + beat[k]);
           });
           if (!Array.isArray(beat.chips) || beat.chips.length < 4) errors.push(beat.id + ' 词块不足');
+          if (beat.line && cnChars.test(beat.line)) errors.push(beat.id + ' 英文台词里混入了中文');
+          if (beat.tip && countSentences(beat.tip) > 2) errors.push(beat.id + ' 地道点超过两句，请压缩');
           if (!Array.isArray(beat.solutions) || !beat.solutions.length) {
             errors.push(beat.id + ' 没有参考答案');
             return;
@@ -397,6 +432,7 @@
             if (!sol.note) errors.push(beat.id + ' 参考答案缺少解释');
             if (!sol.text) { errors.push(beat.id + ' 参考答案为空'); return; }
             if (badStrings.test(sol.text)) errors.push(beat.id + ' 参考答案含占位文本');
+            if (cnChars.test(sol.text)) errors.push(beat.id + ' 参考答案含中文（疑似中式表达）: ' + sol.text);
             var need = counts(wordsOf(sol.text));
             var pool = counts(wordsOf(beat.chips || []));
             Object.keys(need).forEach(function (w) {
@@ -433,6 +469,8 @@
     completeScene: completeScene,
     recordOutcome: recordOutcome,
     personaClosing: personaClosing,
+    sceneCallback: sceneCallback,
+    countSentences: countSentences,
     totalStats: totalStats,
     phraseKey: phraseKey,
     isSaved: isSaved,

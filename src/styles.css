@@ -270,6 +270,20 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 
 .scene-list { display: grid; gap: 10px; }
 
+.season-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 2px 2px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #b9b9cc;
+}
+
+.season-head:first-child { padding-top: 2px; }
+
 .scene-card {
   display: flex;
   align-items: center;
@@ -597,6 +611,19 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .intro-title { font-size: 34px; font-weight: 850; line-height: 1.08; letter-spacing: -0.03em; margin-bottom: 8px; }
 
 .intro-cn { font-size: 16px; color: var(--muted); margin-bottom: 20px; }
+
+.recall {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #d9d3ff;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(167, 139, 250, 0.09);
+  border: 1px solid rgba(167, 139, 250, 0.26);
+  margin-bottom: 14px;
+}
+
+.recall b { display: block; font-size: 11px; letter-spacing: 0.14em; color: #a78bfa; margin-bottom: 4px; }
 
 .intro-hook {
   font-size: 15px;

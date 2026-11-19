@@ -67,6 +67,21 @@
     return -1;
   }
 
+  function seasonOf(scene) { return scene.season || 1; }
+
+  function seasonTitle(n) {
+    var list = C.SEASONS || [];
+    for (var i = 0; i < list.length; i++) if (list[i].index === n) return list[i].title;
+    return '第 ' + n + ' 季';
+  }
+
+  /** 该集在本季里的序号（从 1 开始） */
+  function episodeInSeason(index) {
+    var n = 0;
+    for (var i = 0; i <= index; i++) if (seasonOf(SCENES[i]) === seasonOf(SCENES[index])) n += 1;
+    return n;
+  }
+
   function persona() {
     for (var i = 0; i < PERSONAS.length; i++) if (PERSONAS[i].id === state.persona) return PERSONAS[i];
     return PERSONAS[0];
@@ -145,7 +160,7 @@
       html += '' +
         '<section class="hero">' +
           '<div class="hero-emoji">' + s.emoji + '</div>' +
-          '<div class="eyebrow">今日剧情 · 第 ' + (up.sceneIndex + 1) + ' 集</div>' +
+          '<div class="eyebrow">' + seasonTitle(seasonOf(s)) + ' · 第 ' + (up.sceneIndex + 1) + ' 集</div>' +
           '<div class="hero-title">' + esc(s.cn) + '</div>' +
           '<div class="hero-cn">' + esc(s.title) + ' · ' + s.level + ' · ' + s.minutes + ' 分钟</div>' +
           '<div class="hero-hook">' + esc(s.hook) + '</div>' +
@@ -159,10 +174,10 @@
       html += '' +
         '<section class="hero">' +
           '<div class="hero-emoji">🏁</div>' +
-          '<div class="eyebrow">第一季 · 完结</div>' +
-          '<div class="hero-title">你走完了 5 集</div>' +
+          '<div class="eyebrow">全三季 · 完结</div>' +
+          '<div class="hero-title">你走完了 15 集</div>' +
           '<div class="hero-cn">' + t.passed + ' 幕全部通过，' + t.native + ' 句达到地道水平</div>' +
-          '<div class="hero-hook">第二季正在写：打工第一天、追星评论区、和爸妈的第一场谈判。</div>' +
+          '<div class="hero-hook">从食堂窗口到毕业告别，这个“英语的你”已经能自己处理很多事了。</div>' +
           '<div class="hero-cta"><div class="meta">去句子本复习你说过的句子</div>' +
             '<button class="btn btn-primary btn-sm" data-action="go-book">打开句子本 →</button></div>' +
         '</section>';
@@ -179,6 +194,10 @@
       '<div class="scene-list">';
 
     SCENES.forEach(function (scene, i) {
+      if (i === 0 || seasonOf(scene) !== seasonOf(SCENES[i - 1])) {
+        html += '<div class="season-head"><span>' + esc(seasonTitle(seasonOf(scene))) + '</span>' +
+          '<span class="sub">' + (seasonOf(scene) === 3 ? 'B2' : seasonOf(scene) === 2 ? 'B1' : 'A2–B1') + '</span></div>';
+      }
       var st = E.sceneStatus(state, SCENES, i);
       var stats = E.sceneStats(state, scene);
       var badge = '';
@@ -219,16 +238,19 @@
     var cast = scene.cast.map(function (c) {
       return '<span class="cast-item"><i>' + c.avatar + '</i>' + esc(c.name) + '</span>';
     }).join('');
+    var recall = E.sceneCallback(state, SCENES, scene.id);
+    var scIndex = sceneIndexOf(scene.id);
 
     stage.innerHTML = '' +
       '<div class="screen intro-wrap">' +
         '<div class="play-head">' +
           '<button class="back-btn" data-action="go-home" aria-label="返回">←</button>' +
-          '<div class="play-title">第 ' + (sceneIndexOf(scene.id) + 1) + ' 集 / ' + SCENES.length + '</div>' +
+          '<div class="play-title">' + seasonTitle(seasonOf(scene)) + ' · 第 ' + (scIndex + 1) + ' 集 / ' + SCENES.length + '</div>' +
         '</div>' +
         '<div class="intro-emoji">' + scene.emoji + '</div>' +
         '<h1 class="intro-title">' + esc(scene.cn) + '</h1>' +
         '<div class="intro-cn">' + esc(scene.title) + '</div>' +
+        (recall ? '<div class="recall"><b>上次你选了</b>' + esc(recall) + '</div>' : '') +
         '<div class="intro-hook">' + esc(scene.hook) + '</div>' +
         '<div class="cast">' + cast + '</div>' +
         '<div class="intro-meta"><span>' + scene.level + '</span><span>' + scene.minutes + ' 分钟</span><span>' + list.length + ' 幕</span></div>' +
@@ -313,7 +335,7 @@
       '<div class="screen">' +
         '<div class="play-head">' +
           '<button class="back-btn" data-action="go-home" aria-label="返回首页">←</button>' +
-          '<div class="play-title">第 ' + (sceneIndexOf(scene.id) + 1) + ' 集 · ' + esc(scene.cn) + '</div>' +
+          '<div class="play-title">' + seasonTitle(seasonOf(scene)) + ' · 第 ' + (sceneIndexOf(scene.id) + 1) + ' 集 · ' + esc(scene.cn) + '</div>' +
           '<span class="pill" style="margin-left:auto">' + (view.index + 1) + '/' + list.length + '</span>' +
         '</div>' +
         '<div class="progress"><i style="width:' + Math.round(((view.index) / list.length) * 100) + '%"></i></div>' +
@@ -361,7 +383,7 @@
     stage.innerHTML = '' +
       '<div class="screen">' +
         '<div class="choice-card">' +
-          '<div class="eyebrow">第 ' + (sceneIndexOf(scene.id) + 1) + ' 集 · 你的选择</div>' +
+          '<div class="eyebrow">' + seasonTitle(seasonOf(scene)) + ' · 第 ' + (sceneIndexOf(scene.id) + 1) + ' 集 · 你的选择</div>' +
           '<div class="choice-prompt">' + esc(scene.choice.prompt) + '</div>' +
           opts +
           '<p class="sub" style="margin:10px 0 0;font-size:12px">没有标准答案。但这个选择会被记住。</p>' +
@@ -385,15 +407,17 @@
 
     var nextBtn = '';
     if (nextScene) {
-      nextBtn = '<button class="btn btn-primary" data-action="open-scene" data-id="' + nextScene.id + '">下一集 · ' + esc(nextScene.cn) + ' →</button>';
+      var crosses = seasonOf(nextScene) !== seasonOf(scene);
+      nextBtn = '<button class="btn btn-primary" data-action="open-scene" data-id="' + nextScene.id + '">' +
+        (crosses ? seasonTitle(seasonOf(nextScene)) + '开播 · ' : '下一集 · ') + esc(nextScene.cn) + ' →</button>';
     } else {
-      nextBtn = '<button class="btn btn-primary" data-action="go-home">回到首页 · 第一季完</button>';
+      nextBtn = '<button class="btn btn-primary" data-action="go-home">回到首页 · 全三季完</button>';
     }
 
     stage.innerHTML = '' +
       '<div class="screen">' +
         '<div class="result-hero">' +
-          '<div class="eyebrow">第 ' + (idx + 1) + ' 集 · 本集完</div>' +
+          '<div class="eyebrow">' + seasonTitle(seasonOf(scene)) + ' · 第 ' + (idx + 1) + ' 集 · 本集完</div>' +
           '<div class="big">' + scene.emoji + ' ' + esc(scene.cn) + '</div>' +
           '<div class="small">' + esc(scene.title) + '</div>' +
         '</div>' +

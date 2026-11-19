@@ -186,9 +186,10 @@
     E.flattenBeats(SCENES[0]).forEach(function (x) { s.passed[x.beat.id] = 'native'; });
     s.xp = 90;
     var t = E.totalStats(s, SCENES);
+    var total = SCENES.reduce(function (n, sc) { return n + E.flattenBeats(sc).length; }, 0);
     h.eq(t.passed, 9);
-    h.eq(t.total, 45);
-    h.eq(t.percent, 20);
+    h.eq(t.total, total);
+    h.eq(t.percent, Math.round((9 / total) * 100));
     h.eq(t.xp, 90);
   });
 
@@ -243,14 +244,65 @@
     h.eq(errors.length, 0, '内容错误：\n' + errors.join('\n'));
   });
 
-  h.test('内容规模：至少 5 集 / 40 个回合 / 每集 3 幕', function () {
-    h.ok(SCENES.length >= 5, '场景不足 5 集');
+  h.test('内容规模：3 季 15 集 / 135 个回合 / 每集 3 幕', function () {
+    h.eq(SCENES.length, 15, '应为 15 集');
     var beats = 0;
     SCENES.forEach(function (s) {
-      h.ok(s.acts.length >= 3, s.id + ' 不足 3 幕');
+      h.eq(s.acts.length, 3, s.id + ' 应为 3 幕');
+      h.eq(E.flattenBeats(s).length, 9, s.id + ' 应为 9 个回合');
       beats += E.flattenBeats(s).length;
     });
-    h.ok(beats >= 40, '总回合不足 40，实际 ' + beats);
+    h.eq(beats, 135, '总回合应为 135');
+  });
+
+  h.test('内容规模：三季各 5 集，难度逐季上升', function () {
+    var seasons = SCENES.map(function (s) { return s.season; });
+    h.deepEq(seasons, [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3]);
+    h.eq(SCENES[0].level, 'A2–B1');
+    h.eq(SCENES[14].level, 'B2');
+  });
+
+  h.test('分支承接：每一集都必须引用上一集的两个分支', function () {
+    for (var i = 1; i < SCENES.length; i++) {
+      var prev = SCENES[i - 1];
+      var cur = SCENES[i];
+      h.ok(cur.callbacks, cur.id + ' 缺少 callbacks');
+      prev.choice.options.forEach(function (opt) {
+        h.ok(cur.callbacks[opt.id], cur.id + ' 缺少对上一集分支 ' + opt.id + ' 的承接');
+      });
+    }
+  });
+
+  h.test('分支承接：不同选择真的会得到不同开场', function () {
+    var prev = SCENES[0];
+    var a = E.createState();
+    a = E.completeScene(a, prev.id, prev.choice.options[0].id);
+    var b = E.completeScene(a, prev.id, prev.choice.options[1].id);
+    var lineA = E.sceneCallback(a, SCENES, SCENES[1].id);
+    var lineB = E.sceneCallback(b, SCENES, SCENES[1].id);
+    h.ok(lineA && lineB, '两种选择都应有承接文案');
+    h.ok(lineA !== lineB, '两种选择应产生不同文案');
+    h.eq(E.sceneCallback(a, SCENES, SCENES[0].id), '', '第一集没有上一集');
+  });
+
+  h.test('英文语料：参考答案与台词里不能出现中文', function () {
+    var cn = /[\u4e00-\u9fa5]/;
+    SCENES.forEach(function (s) {
+      E.flattenBeats(s).forEach(function (x) {
+        h.ok(!cn.test(x.beat.line), x.beat.id + ' 台词混入中文');
+        x.beat.solutions.forEach(function (sol) {
+          h.ok(!cn.test(sol.text), x.beat.id + ' 参考答案含中文: ' + sol.text);
+        });
+      });
+    });
+  });
+
+  h.test('地道点解释：每条不超过两句', function () {
+    SCENES.forEach(function (s) {
+      E.flattenBeats(s).forEach(function (x) {
+        h.ok(E.countSentences(x.beat.tip) <= 2, x.beat.id + ' 解释超过两句');
+      });
+    });
   });
 
   h.test('内容：每集都有二选一分支与两个不同结局', function () {
@@ -275,8 +327,8 @@
     h.ok(errors.join('|').indexOf('词块不足') > -1, '应指出词块不足，实际：' + errors.join(' | '));
   });
 
-  /* ---------------- 6. 端到端：完整走通五集 ---------------- */
-  h.test('端到端：用参考答案走完 45 个回合，五集全部可通关', function () {
+  /* ---------------- 6. 端到端：完整走通三季 ---------------- */
+  h.test('端到端：用参考答案走完 135 个回合，15 集全部可通关', function () {
     var s = E.createState();
     s = E.setPersona(s, 'chaos');
     var guard = 0;
@@ -295,10 +347,11 @@
       }
     }
     var t = E.totalStats(s, SCENES);
+    var total = SCENES.reduce(function (n, sc) { return n + E.flattenBeats(sc).length; }, 0);
     h.eq(t.passed, t.total, '应全部通过');
     h.eq(t.percent, 100);
-    h.eq(t.xp, 45 * 10);
-    h.eq(t.native, 45);
+    h.eq(t.xp, total * 10);
+    h.eq(t.native, total);
     h.eq(E.nextUp(s, SCENES), null);
     SCENES.forEach(function (sc) { h.eq(E.sceneStatus(s, SCENES, SCENES.indexOf(sc)), 'done', sc.id); });
   });

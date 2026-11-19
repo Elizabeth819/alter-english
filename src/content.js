@@ -42,6 +42,7 @@
     /* ============================= 1 ============================= */
     {
       id: 'first-day',
+      season: 1,
       title: 'First Day, Zero Friends',
       cn: '开学第一天，零个朋友',
       emoji: '🎒',
@@ -220,12 +221,17 @@
     /* ============================= 2 ============================= */
     {
       id: 'canteen',
+      season: 1,
       title: 'Canteen, 12:05',
       cn: '食堂十二点零五分',
       emoji: '🍜',
       level: 'A2–B1',
       minutes: 3,
       hook: '排队到窗口，阿姨已经在看下一个人的碗了。你身后还有二十个人。',
+      callbacks: {
+        send: '你发的那首 track 在群里被转发了七次。Leo 一见到你就喊“音乐人”，喊得全食堂都听见了。',
+        hold: '你最后没发那首 track。群里没人再提，但 Leo 今天在食堂认出了你，还朝你抬了下下巴。'
+      },
       cast: [{ name: 'Auntie Chen', avatar: '👩‍🍳', role: '三号窗口' }, { name: 'Leo', avatar: '🧢', role: '昨天那个戴帽子的' }],
       acts: [
         {
@@ -392,12 +398,17 @@
     /* ============================= 3 ============================= */
     {
       id: 'group-chat',
+      season: 1,
       title: 'The Group Chat',
       cn: '群聊里的那句话',
       emoji: '💬',
       level: 'B1',
       minutes: 4,
       hook: '昨晚你在 47 人的班级群里，把 Lily 的作品说成了 “mid”。现在她私聊你了。',
+      callbacks: {
+        accept: '那杯冰茶之后，你和 Leo 成了饭搭子。所以昨晚他在群里 @ 你的时候，你有点意外。',
+        decline: '你没让他请那杯冰茶。他后来还是把纸巾盒推给了你，你们从那天起开始聊天。'
+      },
       cast: [{ name: 'Lily', avatar: '🎧', role: '班上做视频最认真的那个人' }, { name: 'Leo', avatar: '🧢', role: '看热闹不嫌事大' }],
       acts: [
         {
@@ -564,12 +575,17 @@
     /* ============================= 4 ============================= */
     {
       id: 'club-audition',
+      season: 1,
       title: 'Club Audition',
       cn: '社团面试那三分钟',
       emoji: '🎬',
       level: 'B1',
       minutes: 4,
       hook: '广播站招新，候场区坐了十二个人，只招两个。你是一号。',
+      callbacks: {
+        truth: '你跟 Lily 说了实话。她没马上原谅你，但第二天把广播站的招新链接发给了你。',
+        light: '你把那件事轻轻带过。Lily 后来说她更希望你说实话，但她还是把招新链接发给了你。'
+      },
       cast: [{ name: 'Ren', avatar: '🎬', role: '广播站学姐 / 负责吓人' }, { name: 'Ms. Zhou', avatar: '👓', role: '评委' }],
       acts: [
         {
@@ -735,12 +751,17 @@
     /* ============================= 5 ============================= */
     {
       id: 'night-before',
+      season: 1,
       title: 'The Night Before',
       cn: '考前一晚一点半',
       emoji: '🌙',
       level: 'B1',
       minutes: 4,
       hook: '明天上午九点，物理。现在是凌晨一点半，你和 Kai 都还醒着。',
+      callbacks: {
+        mia: '你进了广播站。Mia 比你还激动，把你拉进剪辑群，从此你的晚上都不太够用。',
+        home: '你进了广播站。妈妈嘴上说“别耽误学习”，第二天却把你的作品转给了所有亲戚。'
+      },
       cast: [{ name: 'Kai', avatar: '🌙', role: '隔壁班 / 一起熬夜的战友' }],
       acts: [
         {

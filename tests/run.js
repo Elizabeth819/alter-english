@@ -6,7 +6,7 @@
 
 var TEST = require('./harness.js');
 var E = require('../src/engine.js');
-var C = require('../src/content.js');
+var C = require('../src/catalog.js');
 var register = require('./spec.js');
 
 var h = TEST.create();
