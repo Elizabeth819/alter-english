@@ -82,6 +82,21 @@
   var brandTaps = 0;
   var brandTapStart = 0;
 
+  // 试用编号：只从链接参数读取，存本机；不含姓名等个人信息。
+  var TRIAL_KEY = 'alter.trial.v1';
+
+  function readTrialId() {
+    var m = /[?&]trial=([A-Za-z0-9_-]{1,12})/.exec(window.location.search || '');
+    if (m) {
+      var id = m[1].toUpperCase();
+      try { window.localStorage.setItem(TRIAL_KEY, id); } catch (e) { /* 隐私模式忽略 */ }
+      return id;
+    }
+    try { return window.localStorage.getItem(TRIAL_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  var trialId = readTrialId();
+
   function readJSON(key) {
     try { return JSON.parse(window.localStorage.getItem(key)); } catch (e) { return null; }
   }
@@ -1230,6 +1245,9 @@
 
         '<button class="btn btn-primary" data-action="go-report">打开家长周报 →</button>' +
         '<button class="btn btn-ghost" style="margin-top:10px" data-action="export-events">导出学习数据 JSON</button>' +
+        '<p class="load-hint">' + (trialId
+          ? '试用编号：' + esc(trialId) + ' · 导出文件名会带上它'
+          : '未设置试用编号：组织者用 ?trial=编号 的链接打开一次即可') + '</p>' +
         '<p class="load-hint">隐藏入口：连点左上角 ALTER 标志 5 次，或直接打开 #stats。</p>' +
       '</div>';
     updateChrome();
@@ -1543,16 +1561,16 @@
       case 'export-events': {
         if (!AN || !analytics) { toast('暂时没有可导出的数据'); break; }
         try {
-          var blob = new Blob([AN.exportJson(analytics)], { type: 'application/json' });
+          var blob = new Blob([AN.exportJson(analytics, { trialId: trialId })], { type: 'application/json' });
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');
           a.href = url;
-          a.download = 'alter-events-' + todayKey() + '.json';
+          a.download = 'alter-' + (trialId || 'local') + '-' + todayKey() + '.json';
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-          toast('已导出埋点 JSON');
+          toast('已导出学习数据');
         } catch (e) {
           toast('导出失败，可换个浏览器试试');
         }

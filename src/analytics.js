@@ -56,7 +56,7 @@
   /* ---------------- 记录 ---------------- */
 
   function createLog() {
-    return { version: VERSION, events: [] };
+    return { version: VERSION, firstDay: null, events: [] };
   }
 
   function cleanProps(props) {
@@ -83,6 +83,7 @@
   function migrate(raw) {
     var log = createLog();
     if (!raw || typeof raw !== 'object' || !Array.isArray(raw.events)) return log;
+    if (typeof raw.firstDay === 'string' && DAY_RE.test(raw.firstDay)) log.firstDay = raw.firstDay;
     raw.events.forEach(function (item) {
       if (!item || typeof item.name !== 'string' || !item.name) return;
       var day = typeof item.day === 'string' && DAY_RE.test(item.day) ? item.day : null;
@@ -114,6 +115,7 @@
     };
     var p = cleanProps(props);
     if (p) event.props = p;
+    if (!next.firstDay) next.firstDay = event.day;
     next.events.push(event);
     return trim(next);
   }
@@ -353,12 +355,28 @@
 
   /* ---------------- 导出 ---------------- */
 
-  function exportJson(log) {
+  /**
+   * 导出为可归档的 JSON。
+   * @param {object} log
+   * @param {{trialId?:string}} [meta] 试用编号（只写编号，不写任何个人信息）
+   */
+  function exportJson(log, meta) {
     var safe = migrate(log);
+    var m = meta || {};
+    var first = safe.firstDay;
+    var last = null;
+    safe.events.forEach(function (e) {
+      if (!first || e.day < first) first = e.day;
+      if (!last || e.day > last) last = e.day;
+    });
     return JSON.stringify({
       app: 'ALTER',
+      schema: 'alter-trial-v1',
       version: VERSION,
+      trialId: typeof m.trialId === 'string' && m.trialId ? m.trialId : null,
       exportedAt: new Date().toISOString(),
+      firstDay: first || null,
+      lastDay: last || null,
       count: safe.events.length,
       events: safe.events
     }, null, 2);
