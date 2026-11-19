@@ -22,7 +22,7 @@
 <body>
   <div class="wrap">
     <h1>ALTER / TEST FIXTURE</h1>
-    <p class="sub">仅用于验收「结算页 / 名场面卡 / 第二三季」等需要前置进度的界面。打开本页会写入本地进度（覆盖现有进度）。</p>
+    <p class="sub">仅用于验收「结算页 / 名场面卡 / 第二三季 / 每日节奏 / 复习队列」等需要前置进度的界面。打开本页会写入本地进度（覆盖现有进度）。</p>
     <pre id="out">准备写入…</pre>
     <button id="seed">重新写入</button>
     <a class="btn" href="../index.html">打开 App →</a>
@@ -40,9 +40,13 @@
       var params = new URLSearchParams(location.search);
       // mode=done（默认）：第 1 集全通过并已选分支 → 直接看结算页
       // mode=last：只差最后一幕 → 用来验收「最后一幕 → 分支页」
+      // mode=review：第 1 集完成，并塞入一句今天到期的复习句
       // unlock=<sceneId>：把该集之前的全部集数做完并选好分支 → 直接能玩该集
+      // day=yesterday：把完成日期记成昨天 → 用来验收「第二天回来」
       var mode = params.get('mode') || 'done';
       var unlock = params.get('unlock') || '';
+      var today = E.dayKey(new Date());
+      var seedDay = params.get('day') === 'yesterday' ? E.addDays(today, -1) : today;
 
       function passScene(state, scene, complete) {
         var beats = E.flattenBeats(scene);
@@ -56,6 +60,7 @@
           var opt = scene.choice.options[0];
           state.choices[scene.id] = opt.id;
           state.outcomes[scene.id] = opt.outcome;
+          state.completedOn[scene.id] = seedDay;
         }
         return beats.length;
       }
@@ -71,6 +76,13 @@
         }
         for (var i = 0; i < target; i++) passScene(s, C.SCENES[i], true);
         if (target === 0) passScene(s, C.SCENES[0], mode !== 'last');
+        if (mode === 'review' && !unlock) {
+          var firstBeat = E.flattenBeats(C.SCENES[0])[0].beat;
+          s.review[firstBeat.id] = {
+            beatId: firstBeat.id, sceneId: C.SCENES[0].id, season: 1,
+            due: today, interval: 0, source: 'wrong', lapses: 1, added: today
+          };
+        }
         s.saved = [{
           text: "That'd be great, thanks.",
           note: '“That’d be great” 是接受帮助的万能句。',

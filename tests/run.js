@@ -7,10 +7,11 @@
 var TEST = require('./harness.js');
 var E = require('../src/engine.js');
 var C = require('../src/catalog.js');
+var QR = require('../src/qr.js');
 var register = require('./spec.js');
 
 var h = TEST.create();
-register(h, E, C);
+register(h, E, C, QR);
 
 var res = h.run();
 

@@ -4,7 +4,7 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory;
   else root.registerAlterTests = factory;
-})(typeof self !== 'undefined' ? self : this, function (h, E, C) {
+})(typeof self !== 'undefined' ? self : this, function (h, E, C, QR) {
   'use strict';
 
   var SCENES = C.SCENES;
@@ -238,7 +238,190 @@
     h.eq(E.daysBetween('2026-11-18', '2026-11-19'), 1);
   });
 
-  /* ---------------- 5. 内容完整性 ---------------- */
+  /* ---------------- 5. 每日节奏 ---------------- */
+  function passScene(state, scene, day) {
+    E.flattenBeats(scene).forEach(function (x) {
+      var r = E.evaluate(words(E.bestSolution(x.beat).text), x.beat);
+      state = E.applyAnswer(state, x.beat, r, { day: day, sceneId: scene.id, season: scene.season }).state;
+    });
+    return E.completeScene(state, scene.id, scene.choice.options[0].id, day);
+  }
+
+  h.test('每日节奏：新用户今天就是第 1 集', function () {
+    var s = E.createState();
+    s.createdAt = '2026-11-18T10:00:00.000Z';
+    var plan = E.dailyEpisode(s, SCENES, '2026-11-18');
+    h.eq(plan.index, 0);
+    h.eq(plan.scene.id, SCENES[0].id);
+    h.eq(plan.status, 'new');
+    h.eq(plan.timing.status, 'today');
+    h.eq(plan.timing.early, false);
+  });
+
+  h.test('每日节奏：今天通关后，下一集标记为提前解锁（不硬卡）', function () {
+    var s = E.createState();
+    s.createdAt = '2026-11-18T10:00:00.000Z';
+    s = passScene(s, SCENES[0], '2026-11-18');
+    var plan = E.dailyEpisode(s, SCENES, '2026-11-18');
+    h.eq(plan.index, 1);
+    h.eq(plan.status, 'early');
+    h.eq(plan.timing.early, true);
+    h.eq(plan.scheduledFor, '2026-11-19');
+    h.eq(E.sceneTiming(s, SCENES, 1, '2026-11-18').status, 'early');
+    h.eq(E.sceneUnlocked(s, SCENES, 1), true, '提前看仍然可进入');
+  });
+
+  h.test('每日节奏：第二天回来，下一集就是今天的 3 分钟', function () {
+    var s = E.createState();
+    s.createdAt = '2026-11-18T10:00:00.000Z';
+    s = passScene(s, SCENES[0], '2026-11-18');
+    var plan = E.dailyEpisode(s, SCENES, '2026-11-19');
+    h.eq(plan.index, 1);
+    h.eq(plan.status, 'today');
+    h.eq(plan.timing.status, 'today');
+    h.eq(plan.timing.early, false);
+  });
+
+  h.test('每日节奏：老存档缺少 completedOn 时按“今天可玩”处理', function () {
+    var s = E.createState();
+    s.createdAt = '2026-11-18T10:00:00.000Z';
+    E.flattenBeats(SCENES[0]).forEach(function (x) { s.passed[x.beat.id] = 'native'; });
+    s.choices[SCENES[0].id] = SCENES[0].choice.options[0].id;
+    var plan = E.dailyEpisode(s, SCENES, '2026-11-19');
+    h.eq(plan.index, 1);
+    h.eq(plan.timing.early, false);
+    h.eq(plan.status, 'today');
+  });
+
+  h.test('每日节奏：全部通关后不再给出新的一集', function () {
+    var s = E.createState();
+    SCENES.forEach(function (scene) { s = passScene(s, scene, '2026-11-19'); });
+    var plan = E.dailyEpisode(s, SCENES, '2026-11-19');
+    h.eq(plan.status, 'complete');
+    h.eq(plan.index, -1);
+  });
+
+  /* ---------------- 6. 复习队列 ---------------- */
+  h.test('复习：答错 → 今天到期，进入队列', function () {
+    var b = beat('s1-a1-b1');
+    var s = E.applyAnswer(E.createState(), b, E.evaluate(['sorry'], b), {
+      day: '2026-11-19', sceneId: SCENES[0].id, season: 1
+    }).state;
+    var item = E.reviewItem(s, b.id);
+    h.ok(item, '应进入复习队列');
+    h.eq(item.due, '2026-11-19');
+    h.eq(item.source, 'wrong');
+    h.eq(E.reviewDueCount(s, '2026-11-19'), 1);
+    h.eq(E.reviewDue(s, '2026-11-19')[0].beatId, b.id);
+  });
+
+  h.test('复习：只说“能懂” → 3 天后再来，不占今天', function () {
+    var b = beat('s1-a1-b1');
+    var ok = E.evaluate(['Go', 'ahead'], b);
+    h.eq(ok.grade, 'ok');
+    var s = E.applyAnswer(E.createState(), b, ok, {
+      day: '2026-11-19', sceneId: SCENES[0].id, season: 1
+    }).state;
+    h.eq(E.reviewDueCount(s, '2026-11-19'), 0);
+    h.eq(E.reviewDueCount(s, '2026-11-22'), 1);
+    h.eq(E.reviewPending(s, '2026-11-19').length, 1);
+  });
+
+  h.test('复习：剧情里改口说到地道 → 仍留给复习确认，不静默清掉', function () {
+    var b = beat('s1-a1-b1');
+    var s = E.applyAnswer(E.createState(), b, E.evaluate(['sorry'], b), {
+      day: '2026-11-19', sceneId: SCENES[0].id, season: 1
+    }).state;
+    h.ok(E.reviewItem(s, b.id), '先进入队列');
+    s = E.applyAnswer(s, b, E.evaluate(words("No, it's all yours."), b), {
+      day: '2026-11-19', sceneId: SCENES[0].id, season: 1
+    }).state;
+    h.ok(E.reviewItem(s, b.id), '答对后仍应在队列里等复习');
+    h.eq(E.reviewItem(s, b.id).due, '2026-11-19');
+
+    var clean = E.applyAnswer(E.createState(), b, E.evaluate(words("No, it's all yours."), b), {
+      day: '2026-11-19', sceneId: SCENES[0].id, season: 1
+    }).state;
+    h.eq(E.reviewItem(clean, b.id), null, '一次就说到地道，不必进队列');
+  });
+
+  h.test('复习作答：答对移出，答错推到明天', function () {
+    var b = beat('s1-a1-b1');
+    var base = E.applyAnswer(E.createState(), b, E.evaluate(['sorry'], b), {
+      day: '2026-11-19', sceneId: SCENES[0].id, season: 1
+    }).state;
+
+    var pass = E.gradeReview(base, b.id, E.evaluate(words('No, it\'s all yours.'), b), '2026-11-19');
+    h.eq(E.reviewItem(pass, b.id), null);
+
+    var fail = E.gradeReview(base, b.id, E.evaluate(['sorry'], b), '2026-11-19');
+    h.eq(E.reviewItem(fail, b.id).due, '2026-11-20');
+    h.eq(E.reviewItem(fail, b.id).lapses, 2);
+    h.eq(E.reviewDueCount(fail, '2026-11-19'), 0);
+    h.eq(E.reviewDueCount(fail, '2026-11-20'), 1);
+  });
+
+  h.test('复习：本机存档迁移保留队列，坏条目被丢弃', function () {
+    var raw = E.createState();
+    raw.review = {
+      's1-a1-b1': { beatId: 's1-a1-b1', sceneId: 'first-day', season: 1, due: '2026-11-19', interval: 0, source: 'wrong', lapses: 1, added: '2026-11-19' },
+      bad: { nothing: true }
+    };
+    var m = E.migrate(JSON.parse(JSON.stringify(raw)));
+    h.eq(E.reviewTotal(m), 1);
+    h.eq(E.reviewItem(m, 's1-a1-b1').due, '2026-11-19');
+    h.eq(E.reviewItem(m, 'bad'), null);
+  });
+
+  /* ---------------- 7. 二维码 ---------------- */
+  h.test('二维码：线上地址 → 33×33，三个定位图形完整', function () {
+    h.ok(QR, '缺少二维码模块');
+    var qr = QR.encode('https://elizabeth819.github.io/alter-english/');
+    h.eq(qr.size, 33);
+    var rows = [
+      '1111111',
+      '1000001',
+      '1011101',
+      '1011101',
+      '1011101',
+      '1000001',
+      '1111111'
+    ];
+    var corners = [[0, 0], [26, 0], [0, 26]];
+    corners.forEach(function (c) {
+      rows.forEach(function (row, dy) {
+        for (var dx = 0; dx < 7; dx++) {
+          h.eq(qr.modules[c[1] + dy][c[0] + dx], row[dx] === '1',
+            '定位图形 (' + c[0] + ',' + c[1] + ') 偏移 ' + dx + ',' + dy);
+        }
+      });
+    });
+  });
+
+  h.test('二维码：时序图案交错，固定暗模块存在', function () {
+    var qr = QR.encode('https://elizabeth819.github.io/alter-english/');
+    h.eq(qr.modules[6][8], true);
+    h.eq(qr.modules[6][9], false);
+    h.eq(qr.modules[8][6], true);
+    h.eq(qr.modules[9][6], false);
+    h.eq(qr.modules[25][8], true, '固定暗模块');
+    var dark = qr.modules.reduce(function (sum, row) {
+      return sum + row.filter(Boolean).length;
+    }, 0);
+    h.ok(dark > 300 && dark < 850, '暗模块比例异常：' + dark);
+  });
+
+  h.test('二维码：同样输入输出稳定（可复现）', function () {
+    var a = QR.encode('https://example.com');
+    var b = QR.encode('https://example.com');
+    h.deepEq(a.modules, b.modules);
+  });
+
+  h.test('二维码：超出容量时抛错，不生成坏图', function () {
+    h.throws(function () { QR.encode(new Array(120).join('a')); });
+  });
+
+  /* ---------------- 8. 内容完整性 ---------------- */
   h.test('内容校验：命名冲突 / 词块不足 / 字段缺失 全部为 0', function () {
     var errors = E.validateContent(SCENES, PERSONAS);
     h.eq(errors.length, 0, '内容错误：\n' + errors.join('\n'));

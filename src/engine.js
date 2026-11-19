@@ -128,7 +128,9 @@
       attempts: {},
       nativeCount: 0,
       choices: {},
+      completedOn: {},
       outcomes: {},
+      review: {},
       saved: [],
       createdAt: new Date().toISOString()
     };
@@ -151,7 +153,28 @@
     if (raw.passed && typeof raw.passed === 'object') state.passed = raw.passed;
     if (raw.attempts && typeof raw.attempts === 'object') state.attempts = raw.attempts;
     if (raw.choices && typeof raw.choices === 'object') state.choices = raw.choices;
+    if (raw.completedOn && typeof raw.completedOn === 'object') {
+      Object.keys(raw.completedOn).forEach(function (id) {
+        if (typeof raw.completedOn[id] === 'string') state.completedOn[id] = raw.completedOn[id];
+      });
+    }
     if (raw.outcomes && typeof raw.outcomes === 'object') state.outcomes = raw.outcomes;
+    if (raw.review && typeof raw.review === 'object') {
+      Object.keys(raw.review).forEach(function (id) {
+        var item = raw.review[id];
+        if (!item || typeof item !== 'object' || typeof item.due !== 'string') return;
+        state.review[id] = {
+          beatId: String(item.beatId || id),
+          sceneId: typeof item.sceneId === 'string' ? item.sceneId : '',
+          season: typeof item.season === 'number' ? item.season : 1,
+          due: item.due,
+          interval: typeof item.interval === 'number' ? item.interval : 0,
+          source: item.source === 'ok' ? 'ok' : 'wrong',
+          lapses: typeof item.lapses === 'number' ? item.lapses : 0,
+          added: typeof item.added === 'string' ? item.added : item.due
+        };
+      });
+    }
     if (Array.isArray(raw.saved)) state.saved = raw.saved.filter(function (p) { return p && typeof p.text === 'string'; });
     if (typeof raw.createdAt === 'string') state.createdAt = raw.createdAt;
     return state;
@@ -167,8 +190,50 @@
     return !!state.passed[beatId];
   }
 
-  /** 记录一次作答。只有首次通过才加 XP，防止刷题刷分。 */
-  function applyAnswer(state, beat, result) {
+  /** 答题后维护复习队列：答错→今天复习；只说“能懂”→3 天后再来；地道→移出。 */
+  function reviewAfterAnswer(review, beat, result, opts) {
+    var next = clone(review || {});
+    var id = beat.id;
+    var item = next[id];
+    var day = opts.day;
+    var sceneId = opts.sceneId || '';
+    var season = opts.season || 1;
+
+    if (result.passed && result.grade === 'native') {
+      // 剧情里改口说对了，也先留在队列里：等复习环节再确认一次，才算真的记住。
+      if (item && item.due < day) item.due = day;
+      return next;
+    }
+    if (result.passed && result.grade === 'ok') {
+      if (!item) {
+        next[id] = {
+          beatId: id, sceneId: sceneId, season: season,
+          due: addDays(day, 3), interval: 3, source: 'ok', lapses: 0, added: day
+        };
+      } else {
+        item.due = addDays(day, Math.max(3, item.interval || 3));
+        item.interval = Math.max(3, item.interval || 3);
+        if (sceneId) { item.sceneId = sceneId; item.season = season; }
+      }
+      return next;
+    }
+    if (!item) {
+      next[id] = {
+        beatId: id, sceneId: sceneId, season: season,
+        due: day, interval: 0, source: 'wrong', lapses: 1, added: day
+      };
+    } else {
+      item.due = day;
+      item.interval = 0;
+      item.lapses = (item.lapses || 0) + 1;
+      if (sceneId) { item.sceneId = sceneId; item.season = season; }
+    }
+    return next;
+  }
+
+  /** 记录一次作答。只有首次通过才加 XP，防止刷题刷分。
+   * opts.day / opts.sceneId / opts.season 存在时，同步维护复习队列。 */
+  function applyAnswer(state, beat, result, opts) {
     var next = clone(state);
     next.attempts[beat.id] = (next.attempts[beat.id] || 0) + 1;
     var firstPass = false;
@@ -177,6 +242,9 @@
       next.xp += result.xp;
       if (result.grade === 'native') next.nativeCount += 1;
       firstPass = true;
+    }
+    if (opts && opts.day) {
+      next.review = reviewAfterAnswer(next.review, beat, result, opts);
     }
     return { state: next, firstPass: firstPass };
   }
@@ -244,9 +312,10 @@
     return state.choices[scene.id] ? 'done' : 'choice';
   }
 
-  function completeScene(state, sceneId, optionId) {
+  function completeScene(state, sceneId, optionId, day) {
     var next = clone(state);
     next.choices[sceneId] = optionId;
+    if (day) next.completedOn[sceneId] = day;
     return next;
   }
 
@@ -338,6 +407,12 @@
     return Math.round((b - a) / 86400000);
   }
 
+  function addDays(key, n) {
+    var d = new Date(key + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return dayKey(d);
+  }
+
   /** 同一天不变；隔一天 +1；断了重置为 1。 */
   function updateStreak(state, key) {
     var next = clone(state);
@@ -346,6 +421,113 @@
     if (!next.lastDay) next.streak = 1;
     else next.streak = daysBetween(next.lastDay, key) === 1 ? next.streak + 1 : 1;
     next.lastDay = key;
+    return next;
+  }
+
+  /* ---------------- 每日节奏 ---------------- */
+
+  function startDay(state, today) {
+    if (state && state.createdAt) {
+      var d = new Date(state.createdAt);
+      if (!isNaN(d.getTime())) return dayKey(d);
+    }
+    return today;
+  }
+
+  /** 某集原定哪一天解锁；提前看时 early = true。
+   * status: 'locked'（上一集没完成）| 'done' | 'today' | 'early' */
+  function sceneTiming(state, scenes, index, today) {
+    if (index < 0 || index >= (scenes || []).length) {
+      return { status: 'locked', scheduledFor: null, early: false };
+    }
+    if (!sceneUnlocked(state, scenes, index)) {
+      return { status: 'locked', scheduledFor: null, early: false };
+    }
+    var scene = scenes[index];
+    var stats = sceneStats(state, scene);
+    if (stats.done) {
+      return { status: 'done', scheduledFor: (state.completedOn || {})[scene.id] || null, early: false };
+    }
+    var scheduled;
+    if (index === 0) {
+      scheduled = startDay(state, today);
+    } else {
+      var prevDone = (state.completedOn || {})[scenes[index - 1].id];
+      scheduled = prevDone ? addDays(prevDone, 1) : today;
+    }
+    var early = today < scheduled;
+    return { status: early ? 'early' : 'today', scheduledFor: scheduled, early: early };
+  }
+
+  /** 今天该玩哪一集：第一集未完成的；今天已完成则给出下一集（early）。 */
+  function dailyEpisode(state, scenes, today) {
+    var due = reviewDueCount(state, today);
+    if (!scenes || !scenes.length) {
+      return { status: 'complete', index: -1, scene: null, timing: null, due: due, scheduledFor: null };
+    }
+    var first = -1;
+    for (var i = 0; i < scenes.length; i++) {
+      if (!sceneStats(state, scenes[i]).done) { first = i; break; }
+    }
+    if (first < 0) {
+      return { status: 'complete', index: -1, scene: null, timing: null, due: due, scheduledFor: null };
+    }
+    var timing = sceneTiming(state, scenes, first, today);
+    var started = Object.keys(state.passed || {}).length > 0;
+    var status = timing.status === 'locked' ? 'locked' : timing.status === 'early' ? 'early' : started ? 'today' : 'new';
+    return {
+      status: status,
+      index: first,
+      scene: scenes[first],
+      timing: timing,
+      due: due,
+      scheduledFor: timing.scheduledFor
+    };
+  }
+
+  /* ---------------- 复习队列 ---------------- */
+
+  function reviewItem(state, beatId) {
+    return (state.review && state.review[beatId]) || null;
+  }
+
+  function reviewDue(state, today) {
+    var review = state.review || {};
+    return Object.keys(review).map(function (id) { return review[id]; })
+      .filter(function (item) { return item && item.due && item.due <= today; })
+      .sort(function (a, b) {
+        if (a.due !== b.due) return a.due < b.due ? -1 : 1;
+        return (a.added || '') < (b.added || '') ? -1 : 1;
+      });
+  }
+
+  function reviewPending(state, today) {
+    var review = state.review || {};
+    return Object.keys(review).map(function (id) { return review[id]; })
+      .filter(function (item) { return item && item.due && item.due > today; })
+      .sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
+  }
+
+  function reviewDueCount(state, today) {
+    return reviewDue(state, today).length;
+  }
+
+  function reviewTotal(state) {
+    return Object.keys(state.review || {}).length;
+  }
+
+  /** 复习作答：答对（地道或能懂）移出；答错推到明天。 */
+  function gradeReview(state, beatId, result, day) {
+    var next = clone(state);
+    var item = next.review && next.review[beatId];
+    if (!item) return next;
+    if (result.passed) {
+      delete next.review[beatId];
+    } else {
+      item.due = addDays(day, 1);
+      item.interval = 1;
+      item.lapses = (item.lapses || 0) + 1;
+    }
     return next;
   }
 
@@ -477,7 +659,16 @@
     toggleSaved: toggleSaved,
     dayKey: dayKey,
     daysBetween: daysBetween,
+    addDays: addDays,
     updateStreak: updateStreak,
+    sceneTiming: sceneTiming,
+    dailyEpisode: dailyEpisode,
+    reviewItem: reviewItem,
+    reviewDue: reviewDue,
+    reviewPending: reviewPending,
+    reviewDueCount: reviewDueCount,
+    reviewTotal: reviewTotal,
+    gradeReview: gradeReview,
     validateContent: validateContent
   };
 });

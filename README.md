@@ -23,13 +23,15 @@ You pick a **persona** (The Softie / The Roaster / The Wildcard). It changes the
 
 - **3 seasons · 15 episodes · 45 acts · 135 real speaking turns**, each with distractor chunks, multiple accepted answers and a short usage note
 - Difficulty ramps by season: A2–B1 (school) → B1 (first job / travel / family / online friend) → B2 (interview, flight disruption, argument, online event, farewell)
+- **Daily pacing:** home shows one clear "today's 3 minutes". The next episode unlocks tomorrow; finishing today's episode does not hard-block you — the next one is still playable, marked as early access
+- **Review queue:** lines you got wrong (or only "ok") come back on a forgetting curve; only a correct answer in review removes them
 - 3 personas, XP, daily streak, "native lines" counter, total progress
 - 2-way branches with distinct endings; the next episode contains a `callbacks` block keyed by the previous choice, so every branch is referenced later
-- Canvas-generated share card (1080×1350 PNG)
+- Canvas-generated share card (1080×1350 PNG) with the episode number, native-line count and a **scannable QR code** to the live app
 - Phrase book: save / replay / delete the lines you actually said
 - Built-in TTS for every NPC line (Web Speech API, no key)
-- Installable PWA with offline cache
-- 37 automated tests, zero dependencies
+- Installable PWA with offline cache; seasons load on demand and a first-paint skeleton keeps weak networks from showing a white screen
+- 51 automated tests, zero dependencies
 
 **Not in scope yet:** accounts & cloud sync, LLM free chat, speech scoring, friends/leaderboards, payments. The MVP deliberately proves the core loop with no backend and no API keys.
 
@@ -49,27 +51,28 @@ No build step, no `npm install`, no environment variables, no secrets.
 ## Tests
 
 ```bash
-node tests/run.js        # 37/37 passing, Node >= 12, no dependencies
+node tests/run.js        # 51/51 passing, Node >= 12, no dependencies
 ```
 
 Or open `tests/test.html` in a browser — same suite, zero install.
 
-Coverage: scoring (5 grades, normalization, multi-answer best pick), XP anti-farming, unlock chain, scene state machine, storage migration, streak, phrase book, **content integrity** (every reference answer must be assemblable from its chunk bank; no Chinese in English lines; tips ≤ 2 sentences; every episode declares a valid season and carries callbacks for both branches of the previous episode), and an end-to-end simulation playing all 135 turns and finishing all 15 episodes.
+Coverage: scoring (5 grades, normalization, multi-answer best pick), XP anti-farming, unlock chain, scene state machine, storage migration, streak, phrase book, **daily pacing** (today's episode, next-day unlock, early-access flag, legacy state fallback), **review scheduling** (wrong → today, "ok" → +3 days, review pass removes / fail postpones), **QR generation** (finder/timing patterns, capacity guard, deterministic output), **content integrity** (every reference answer must be assemblable from its chunk bank; no Chinese in English lines; tips ≤ 2 sentences; every episode declares a valid season and carries callbacks for both branches of the previous episode), and an end-to-end simulation playing all 135 turns and finishing all 15 episodes.
 
 ## Stack
 
-Plain HTML/CSS/JS. `src/engine.js` is a UMD pure-function core (scoring, progress, persistence) so it runs in both the browser and Node tests. Content lives in per-season files merged by `src/catalog.js` — still zero build, but the first screen does not need to parse one huge file. `localStorage` is the only storage. No frameworks, no CDN, no third-party fonts or images.
+Plain HTML/CSS/JS. `src/engine.js` is a UMD pure-function core (scoring, progress, persistence) so it runs in both the browser and Node tests. Seasons live in separate files; `index.html` loads only season 1 for first paint and `src/catalog.js` injects seasons 2–3 on idle or on demand. `localStorage` is the only storage. No frameworks, no CDN, no third-party fonts or images.
 
 ```
-index.html              entry point
+index.html              entry point + first-paint skeleton
 src/content.js          season 1: 5 episodes / personas
-src/seasons/season2.js  season 2: episodes 6–10
-src/seasons/season3.js  season 3: episodes 11–15
-src/catalog.js          merges seasons into window.ALTER_CONTENT
-src/engine.js           scoring, progress, unlock, storage, content validator
+src/seasons/season2.js  season 2: episodes 6–10 (loaded on demand)
+src/seasons/season3.js  season 3: episodes 11–15 (loaded on demand)
+src/catalog.js          merges loaded seasons into window.ALTER_CONTENT
+src/engine.js           scoring, progress, daily pacing, review queue, storage, validator
+src/qr.js               fixed-version QR encoder (share card link, zero deps)
 src/app.js              UI: routing, rendering, events, canvas card, TTS
 src/styles.css          all styles
-tests/                  harness + 37 specs + node/browser runners
+tests/                  harness + 51 specs + node/browser runners
 docs/product.md         product thinking (Chinese)
 docs/README.zh-CN.md    full Chinese guide
 ```
@@ -80,7 +83,7 @@ Append an object to the last season file (or add a new season file and register 
 
 ## Status
 
-Playable end to end across 3 seasons (15 episodes, 135 turns). Next: adaptive hints based on past accuracy, read-aloud comparison, share-link challenges, then accounts and cloud sync.
+v1.1 — retention pass. Daily pacing, a review queue, a QR-equipped share card, on-demand season loading and a resilient offline cache are live. 15 episodes playable end to end. Next: adaptive hints based on past accuracy, read-aloud comparison, share-link challenges, then accounts and cloud sync.
 
 ## Notes
 

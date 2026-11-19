@@ -804,6 +804,144 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .phrase .from { font-size: 11px; color: var(--muted-2); margin-top: 6px; }
 .phrase-actions { display: flex; gap: 8px; margin-top: 10px; }
 
+/* ---------------- 首屏骨架 ---------------- */
+
+.boot {
+  min-height: 62vh;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--muted-2);
+  font-size: 13px;
+}
+
+.boot-mark {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.boot-mark span { color: var(--lime); }
+.boot p { margin: 0; }
+.boot .boot-sub { font-size: 11px; color: var(--muted-2); }
+
+/* ---------------- 每日节奏 / 复习 ---------------- */
+
+.hero-done {
+  background:
+    linear-gradient(150deg, rgba(201, 247, 93, 0.12), rgba(255, 255, 255, 0.04) 62%, rgba(255, 255, 255, 0.03));
+}
+
+.early-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #ffe0a3;
+  background: rgba(255, 209, 102, 0.09);
+  border: 1px dashed rgba(255, 209, 102, 0.32);
+  border-radius: 12px;
+  padding: 9px 12px;
+  margin-bottom: 14px;
+}
+
+.early-note b { color: #ffd166; }
+
+.review-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(120deg, rgba(167, 139, 250, 0.16), rgba(167, 139, 250, 0.05));
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  transition: transform 0.15s ease;
+}
+
+.review-banner:active { transform: scale(0.985); }
+
+.review-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--violet);
+  color: #12091f;
+}
+
+.review-text { flex: 1; min-width: 0; }
+.review-text b { display: block; font-size: 14px; }
+.review-text span { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.review-arrow { color: var(--violet); font-weight: 800; }
+
+.review-panel {
+  margin-top: 8px;
+  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(140deg, rgba(167, 139, 250, 0.12), rgba(255, 255, 255, 0.035));
+  border: 1px solid rgba(167, 139, 250, 0.28);
+}
+
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.review-num { font-size: 30px; font-weight: 850; line-height: 1.2; }
+.review-num span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.review-panel .sub { margin: 0; font-size: 12px; line-height: 1.6; }
+.review-next { margin-top: 8px; font-size: 11px; color: var(--muted-2); }
+
+.review-done { text-align: center; padding-top: 40px; }
+.review-done .intro-emoji { margin: 0 auto 12px; }
+
+/* ---------------- 剧集折叠 ---------------- */
+
+.all-scenes {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0 14px;
+}
+
+.all-scenes summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.all-scenes summary::-webkit-details-marker { display: none; }
+.all-scenes summary::after { content: ' +'; color: var(--muted-2); }
+.all-scenes[open] summary::after { content: ' −'; }
+.all-scenes .scene-list { padding-bottom: 14px; }
+
+.scene-card.early {
+  border-color: rgba(255, 209, 102, 0.3);
+  background: rgba(255, 209, 102, 0.045);
+}
+
+.scene-badge.early { background: rgba(255, 209, 102, 0.16); color: var(--amber); }
+
+.load-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted-2);
+  text-align: center;
+}
+
 /* ---------------- 底部 tab ---------------- */
 
 .tabbar {

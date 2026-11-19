@@ -26,7 +26,13 @@
       <button class="icon-btn" data-action="go-book" aria-label="句子本">📓</button>
     </header>
 
-    <main id="stage" class="stage" aria-live="polite"></main>
+    <main id="stage" class="stage" aria-live="polite">
+      <div class="boot">
+        <div class="boot-mark">ALTER<span>·</span></div>
+        <p class="boot-text">正在准备今天的 3 分钟…</p>
+        <p class="boot-sub">首次打开需要联网，之后可离线使用</p>
+      </div>
+    </main>
 
     <nav class="tabbar" aria-label="主导航">
       <button class="tab on" data-tab="home" data-action="go-home">剧情</button>
@@ -38,10 +44,17 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="src/content.js"></script>
-  <script src="src/seasons/season2.js"></script>
-  <script src="src/seasons/season3.js"></script>
+  <script src="src/qr.js"></script>
   <script src="src/catalog.js"></script>
   <script src="src/engine.js"></script>
   <script src="src/app.js"></script>
+  <script>
+    setTimeout(function () {
+      var boot = document.querySelector('.boot');
+      if (!boot) return;
+      var sub = boot.querySelector('.boot-sub');
+      if (sub) sub.textContent = '网络有点慢，正在继续加载…已缓存过的话可以离线打开。';
+    }, 6000);
+  </script>
 </body>
 </html>

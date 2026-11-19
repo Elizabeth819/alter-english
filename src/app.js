@@ -16,6 +16,7 @@
   var SCENES = C.SCENES;
   var PERSONAS = C.PERSONAS;
   var TAB_META = { home: '剧情', book: '句子本', persona: '人设' };
+  var LIVE_URL = 'https://elizabeth819.github.io/alter-english/';
 
   /* ---------------- 存储 ---------------- */
 
@@ -95,6 +96,36 @@
     return -1;
   }
 
+  function todayKey() {
+    return E.dayKey(new Date());
+  }
+
+  /** 在已加载的剧集里找回合（复习队列只有 beatId）。 */
+  function findBeat(beatId) {
+    for (var i = 0; i < SCENES.length; i++) {
+      var list = beatsOf(SCENES[i]);
+      for (var j = 0; j < list.length; j++) {
+        if (list[j].beat.id === beatId) return { beat: list[j].beat, scene: SCENES[i], index: j };
+      }
+    }
+    return null;
+  }
+
+  function currentBeat() {
+    if (view.screen === 'review') {
+      var hit = view.review && view.review.list[view.review.index];
+      return hit ? hit.beat : null;
+    }
+    var scene = byId(view.sceneId);
+    if (!scene) return null;
+    var item = beatsOf(scene)[view.index];
+    return item ? item.beat : null;
+  }
+
+  function dueReviewCount() {
+    return E.reviewDueCount(state, todayKey());
+  }
+
   function sceneXp(scene) {
     var xp = 0;
     beatsOf(scene).forEach(function (x) {
@@ -143,44 +174,93 @@
     }
     document.querySelectorAll('.tab').forEach(function (btn) {
       var target = btn.getAttribute('data-tab');
-      btn.classList.toggle('on', target === view.screen || (view.screen === 'intro' || view.screen === 'play' || view.screen === 'choice' || view.screen === 'result') && target === 'home');
+      var storyScreen = view.screen === 'intro' || view.screen === 'play' || view.screen === 'choice' || view.screen === 'result';
+      var reviewScreen = view.screen === 'review' || view.screen === 'reviewDone';
+      btn.classList.toggle('on', target === view.screen || (storyScreen && target === 'home') || (reviewScreen && target === 'book'));
     });
   }
 
   /* ---------------- 首页 ---------------- */
 
+  function sceneCardHtml(scene, i, today) {
+    var stats = E.sceneStats(state, scene);
+    var st = E.sceneStatus(state, SCENES, i);
+    var timing = E.sceneTiming(state, SCENES, i, today);
+    var badge = '';
+    var cls = '';
+    if (st === 'locked') { badge = '🔒 未解锁'; cls = 'locked'; }
+    else if (st === 'done') { badge = '✓ 已完成'; cls = 'done'; }
+    else if (st === 'choice') { badge = '等你选择'; cls = 'active'; }
+    else if (timing.status === 'early') { badge = '⚡ 提前解锁'; cls = 'early'; }
+    else if (timing.status === 'today') { badge = stats.passed ? stats.passed + '/' + stats.total + ' 幕' : '今天'; cls = 'active'; }
+    else { badge = stats.passed + '/' + stats.total + ' 幕'; cls = 'active'; }
+
+    return '' +
+      '<button class="scene-card ' + cls + '" data-action="open-scene" data-id="' + scene.id + '">' +
+        '<span class="scene-thumb">' + (st === 'locked' ? '🔒' : scene.emoji) + '</span>' +
+        '<span class="scene-info"><b>第 ' + (i + 1) + ' 集 · ' + esc(scene.cn) + '</b>' +
+          '<span>' + esc(scene.title) + '</span></span>' +
+        '<span class="scene-badge ' + (st === 'done' || st === 'choice' ? 'ok' : cls === 'early' ? 'early' : st === 'active' ? 'on' : '') + '">' + badge + '</span>' +
+      '</button>';
+  }
+
   function renderHome() {
     var t = E.totalStats(state, SCENES);
-    var up = E.nextUp(state, SCENES);
+    var today = todayKey();
+    var plan = E.dailyEpisode(state, SCENES, today);
+    var due = E.reviewDueCount(state, today);
+    var pending = E.reviewPending(state, today);
+    var all = C.allLoaded ? C.allLoaded() : true;
     var html = '';
 
-    if (up) {
-      var s = up.scene;
-      var total = beatsOf(s).length;
-      html += '' +
-        '<section class="hero">' +
-          '<div class="hero-emoji">' + s.emoji + '</div>' +
-          '<div class="eyebrow">' + seasonTitle(seasonOf(s)) + ' · 第 ' + (up.sceneIndex + 1) + ' 集</div>' +
-          '<div class="hero-title">' + esc(s.cn) + '</div>' +
-          '<div class="hero-cn">' + esc(s.title) + ' · ' + s.level + ' · ' + s.minutes + ' 分钟</div>' +
-          '<div class="hero-hook">' + esc(s.hook) + '</div>' +
-          '<div class="hero-cta">' +
-            '<div class="meta">' + esc(up.act.title) + '<br>第 ' + (up.beatIndex + 1) + ' / ' + total + ' 幕</div>' +
-            '<button class="btn btn-primary btn-sm" data-action="open-scene" data-id="' + s.id + '">' +
-              (up.beatIndex > 0 ? '继续 →' : '开始 3 分钟 →') + '</button>' +
-          '</div>' +
-        '</section>';
-    } else {
+    if (plan.status === 'complete') {
       html += '' +
         '<section class="hero">' +
           '<div class="hero-emoji">🏁</div>' +
           '<div class="eyebrow">全三季 · 完结</div>' +
-          '<div class="hero-title">你走完了 15 集</div>' +
+          '<div class="hero-title">你走完了 ' + SCENES.length + ' 集</div>' +
           '<div class="hero-cn">' + t.passed + ' 幕全部通过，' + t.native + ' 句达到地道水平</div>' +
           '<div class="hero-hook">从食堂窗口到毕业告别，这个“英语的你”已经能自己处理很多事了。</div>' +
-          '<div class="hero-cta"><div class="meta">去句子本复习你说过的句子</div>' +
-            '<button class="btn btn-primary btn-sm" data-action="go-book">打开句子本 →</button></div>' +
+          '<div class="hero-cta"><div class="meta">' + (due ? due + ' 句等待复习' : '每天回来复习几句，别让它们溜走') + '</div>' +
+            '<button class="btn btn-primary btn-sm" data-action="' + (due ? 'start-review' : 'go-book') + '">' +
+              (due ? '复习 ' + due + ' 句 →' : '打开句子本 →') + '</button></div>' +
         '</section>';
+    } else if (plan.scene) {
+      var s = plan.scene;
+      var total = beatsOf(s).length;
+      var idx = firstUnpassedIndex(s);
+      var global = plan.index + 1;
+      var early = plan.status === 'early';
+      var resume = idx > 0;
+      html += '' +
+        '<section class="hero' + (early ? ' hero-done' : '') + '">' +
+          '<div class="hero-emoji">' + s.emoji + '</div>' +
+          '<div class="eyebrow">' + (early ? '今天的 3 分钟 · 已完成 ✓' : '今天的 3 分钟') + '</div>' +
+          '<div class="hero-title">' + esc(s.cn) + '</div>' +
+          '<div class="hero-cn">' + esc(s.title) + ' · ' + seasonTitle(seasonOf(s)) + ' · 第 ' + global + ' 集</div>' +
+          '<div class="hero-hook">' + esc(s.hook) + '</div>' +
+          (early ? '<div class="early-note">这一集原定 <b>' + esc(plan.scheduledFor) + '</b> 解锁。想提前看也可以，明天照常更新。</div>' : '') +
+          '<div class="hero-cta">' +
+            '<div class="meta">' + (early
+              ? '提前解锁 · 第 ' + global + ' 集 · ' + total + ' 幕'
+              : resume
+                ? '已演到第 ' + (idx + 1) + ' / ' + total + ' 幕'
+                : '约 ' + (s.minutes || 3) + ' 分钟 · ' + total + ' 幕') + '</div>' +
+            '<button class="btn btn-primary btn-sm" data-action="open-scene" data-id="' + s.id + '">' +
+              (early ? '提前看第 ' + global + ' 集 →' : resume ? '继续今天的 3 分钟 →' : '开始今天的 3 分钟 →') +
+            '</button>' +
+          '</div>' +
+        '</section>';
+    }
+
+    if (due) {
+      html += '' +
+        '<button class="review-banner" data-action="start-review">' +
+          '<span class="review-badge">复习</span>' +
+          '<span class="review-text"><b>' + due + ' 句到期</b>' +
+            '<span>说错或只说“能懂”的句子会按遗忘节奏回来，答对才移出</span></span>' +
+          '<span class="review-arrow">→</span>' +
+        '</button>';
     }
 
     html += '' +
@@ -189,35 +269,36 @@
         '<div class="stat"><b>' + state.streak + '</b><span>连击天数</span></div>' +
         '<div class="stat"><b>' + t.native + '</b><span>地道句</span></div>' +
         '<div class="stat"><b>' + t.percent + '%</b><span>总进度</span></div>' +
-      '</div>' +
-      '<div class="section-head"><h2 class="h2">剧集</h2><span class="sub">' + t.passed + ' / ' + t.total + ' 幕</span></div>' +
+      '</div>';
+
+    var currentSeason = plan.scene ? seasonOf(plan.scene) : 3;
+    var seasonScenes = [];
+    SCENES.forEach(function (scene, i) { if (seasonOf(scene) === currentSeason) seasonScenes.push(i); });
+    var doneInSeason = seasonScenes.filter(function (i) { return E.sceneStats(state, SCENES[i]).done; }).length;
+
+    html += '<div class="section-head"><h2 class="h2">本季 · ' + esc(seasonTitle(currentSeason)) + '</h2>' +
+      '<span class="sub">' + doneInSeason + ' / ' + seasonScenes.length + ' 集</span></div>' +
       '<div class="scene-list">';
-
-    SCENES.forEach(function (scene, i) {
-      if (i === 0 || seasonOf(scene) !== seasonOf(SCENES[i - 1])) {
-        html += '<div class="season-head"><span>' + esc(seasonTitle(seasonOf(scene))) + '</span>' +
-          '<span class="sub">' + (seasonOf(scene) === 3 ? 'B2' : seasonOf(scene) === 2 ? 'B1' : 'A2–B1') + '</span></div>';
-      }
-      var st = E.sceneStatus(state, SCENES, i);
-      var stats = E.sceneStats(state, scene);
-      var badge = '';
-      var cls = '';
-      var action = 'open-scene';
-      if (st === 'locked') { badge = '🔒 未解锁'; cls = 'locked'; }
-      else if (st === 'active') { badge = stats.passed + '/' + stats.total + ' 幕'; cls = 'active'; }
-      else if (st === 'choice') { badge = '等你选择'; cls = 'active'; }
-      else { badge = '✓ 已完成'; cls = 'done'; }
-      html += '' +
-        '<button class="scene-card ' + cls + '" data-action="' + action + '" data-id="' + scene.id + '">' +
-          '<span class="scene-thumb">' + (st === 'locked' ? '🔒' : scene.emoji) + '</span>' +
-          '<span class="scene-info"><b>第 ' + (i + 1) + ' 集 · ' + esc(scene.cn) + '</b>' +
-            '<span>' + esc(scene.title) + '</span></span>' +
-          '<span class="scene-badge ' + (st === 'done' || st === 'choice' ? 'ok' : st === 'active' ? 'on' : '') + '">' + badge + '</span>' +
-        '</button>';
-    });
-
+    seasonScenes.forEach(function (i) { html += sceneCardHtml(SCENES[i], i, today); });
     html += '</div>';
 
+    if (!all) {
+      html += '<div class="load-hint">正在载入后续剧集…</div>';
+    } else {
+      html += '<details class="all-scenes"><summary>全部剧集 · ' + SCENES.length + ' 集</summary><div class="scene-list">';
+      SCENES.forEach(function (scene, i) {
+        if (i === 0 || seasonOf(scene) !== seasonOf(SCENES[i - 1])) {
+          html += '<div class="season-head"><span>' + esc(seasonTitle(seasonOf(scene))) + '</span>' +
+            '<span class="sub">' + (seasonOf(scene) === 3 ? 'B2' : seasonOf(scene) === 2 ? 'B1' : 'A2–B1') + '</span></div>';
+        }
+        html += sceneCardHtml(scene, i, today);
+      });
+      html += '</div></details>';
+    }
+
+    if (pending.length) {
+      html += '<div class="teaser">另有 ' + pending.length + ' 句会在之后的复习里出现。先不用管。</div>';
+    }
     if (!state.persona) html += '<div class="teaser">先选一个「英语分身」，你说的话会带上它的性格。</div>';
 
     stage.innerHTML = '<div class="screen">' + html + '</div>';
@@ -240,6 +321,7 @@
     }).join('');
     var recall = E.sceneCallback(state, SCENES, scene.id);
     var scIndex = sceneIndexOf(scene.id);
+    var timing = E.sceneTiming(state, SCENES, scIndex, todayKey());
 
     stage.innerHTML = '' +
       '<div class="screen intro-wrap">' +
@@ -250,6 +332,7 @@
         '<div class="intro-emoji">' + scene.emoji + '</div>' +
         '<h1 class="intro-title">' + esc(scene.cn) + '</h1>' +
         '<div class="intro-cn">' + esc(scene.title) + '</div>' +
+        (timing.status === 'early' ? '<div class="early-note">⚡ 提前解锁 · 原定 ' + esc(timing.scheduledFor) + ' 解锁</div>' : '') +
         (recall ? '<div class="recall"><b>上次你选了</b>' + esc(recall) + '</div>' : '') +
         '<div class="intro-hook">' + esc(scene.hook) + '</div>' +
         '<div class="cast">' + cast + '</div>' +
@@ -299,8 +382,14 @@
 
     var actions = '';
     if (r.passed) {
-      actions = '<button class="btn btn-primary btn-sm" data-action="next-beat">继续</button>' +
-        '<button class="btn btn-ghost btn-sm" data-action="save-phrase">收藏这句</button>';
+      if (view.screen === 'review') {
+        var lastOne = view.review && view.review.index >= view.review.list.length - 1;
+        actions = '<button class="btn btn-primary btn-sm" data-action="next-review">' +
+          (lastOne ? '完成复习 →' : '下一条 →') + '</button>';
+      } else {
+        actions = '<button class="btn btn-primary btn-sm" data-action="next-beat">继续</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="save-phrase">收藏这句</button>';
+      }
     } else {
       actions = '<button class="btn btn-ghost btn-sm" data-action="retry">再试一次</button>' +
         (view.fails >= 3 ? '<button class="btn btn-ghost btn-sm" data-action="fill-answer">照着拼</button>' : '');
@@ -308,7 +397,7 @@
 
     return '<div class="feedback ' + m[1] + '" role="status">' +
       '<div class="grade-row"><span class="grade-badge ' + r.grade + '">' + m[0] + '</span>' +
-      '<span class="grade-score">' + r.score + ' / 100' + (r.passed ? ' · +' + r.xp + ' XP' : '') + '</span></div>' +
+      '<span class="grade-score">' + r.score + ' / 100' + (r.passed && view.screen !== 'review' ? ' · +' + r.xp + ' XP' : '') + '</span></div>' +
       body + '<div class="feedback-actions">' + actions + '</div></div>';
   }
 
@@ -408,11 +497,14 @@
     var nextBtn = '';
     if (nextScene) {
       var crosses = seasonOf(nextScene) !== seasonOf(scene);
+      var nextTiming = E.sceneTiming(state, SCENES, idx + 1, todayKey());
       nextBtn = '<button class="btn btn-primary" data-action="open-scene" data-id="' + nextScene.id + '">' +
-        (crosses ? seasonTitle(seasonOf(nextScene)) + '开播 · ' : '下一集 · ') + esc(nextScene.cn) + ' →</button>';
+        (crosses ? seasonTitle(seasonOf(nextScene)) + '开播 · ' : '下一集 · ') + esc(nextScene.cn) + ' →</button>' +
+        (nextTiming.status === 'early' ? '<div class="early-note">下一集明天自动解锁，今天可以先看。</div>' : '');
     } else {
       nextBtn = '<button class="btn btn-primary" data-action="go-home">回到首页 · 全三季完</button>';
     }
+    var dueNow = dueReviewCount();
 
     stage.innerHTML = '' +
       '<div class="screen">' +
@@ -433,6 +525,10 @@
           '<button class="btn btn-ghost btn-sm" data-action="download-card">⬇ 下载名场面卡</button>' +
           '<button class="btn btn-ghost btn-sm" data-action="save-last">收藏最后一句</button>' +
         '</div>' +
+        (dueNow ? '<button class="review-banner" data-action="start-review">' +
+          '<span class="review-badge">复习</span>' +
+          '<span class="review-text"><b>' + dueNow + ' 句到期</b><span>今天说错或只说“能懂”的句子，趁热再来一次</span></span>' +
+          '<span class="review-arrow">→</span></button>' : '') +
         nextBtn +
         (nextScene ? '<div class="teaser">下一集：' + esc(nextScene.hook) + '</div>' : '') +
       '</div>';
@@ -542,8 +638,8 @@
     ctx.fillText(scene.cn, 84, 300 + titleLines.length * 76 + 20);
 
     // 台词卡
-    var boxY = 520;
-    var boxH = 470;
+    var boxY = 510;
+    var boxH = 430;
     ctx.fillStyle = 'rgba(255,255,255,0.055)';
     roundRect(ctx, 60, boxY, W - 120, boxH, 34);
     ctx.fill();
@@ -553,63 +649,112 @@
 
     ctx.fillStyle = p.color;
     ctx.font = '800 26px ' + font;
-    ctx.fillText('你说 / YOU SAID', 104, boxY + 66);
+    ctx.fillText('你说 / YOU SAID', 104, boxY + 62);
 
     var quote = lastItem ? E.bestSolution(lastItem.beat).text : '';
     ctx.fillStyle = '#f7f7fb';
-    ctx.font = '700 62px ' + font;
-    var quoteLines = wrapLines(ctx, quote, W - 220, 4);
+    ctx.font = '700 58px ' + font;
+    var quoteLines = wrapLines(ctx, quote, W - 220, 3);
     quoteLines.forEach(function (line, i) {
-      ctx.fillText(line, 104, boxY + 168 + i * 82);
+      ctx.fillText(line, 104, boxY + 152 + i * 76);
     });
 
     // 对方台词
     if (lastItem) {
       ctx.fillStyle = 'rgba(255,255,255,0.42)';
-      ctx.font = '500 27px ' + font;
+      ctx.font = '500 26px ' + font;
       var npcLine = lastItem.beat.speaker + ': "' + lastItem.beat.line + '"';
       var npcLines = wrapLines(ctx, npcLine, W - 220, 1);
-      ctx.fillText(npcLines[0], 104, boxY + boxH - 54);
+      ctx.fillText(npcLines[0], 104, boxY + boxH - 42);
     }
+
+    // 集数 / 地道句数
+    var stats = E.sceneStats(state, scene);
+    ctx.fillStyle = 'rgba(255,255,255,0.62)';
+    ctx.font = '600 28px ' + font;
+    ctx.fillText('第 ' + (idx + 1) + ' 集 · 本集 ' + stats.native + '/' + stats.total + ' 句地道', 84, 992);
 
     // 底部人设
     ctx.fillStyle = 'rgba(255,255,255,0.07)';
-    roundRect(ctx, 60, 1080, W - 120, 150, 30);
+    roundRect(ctx, 60, 1024, 640, 200, 30);
     ctx.fill();
 
     ctx.fillStyle = '#fff';
-    ctx.font = '500 56px ' + font;
-    ctx.fillText(p.emoji, 96, 1170);
+    ctx.font = '500 60px ' + font;
+    ctx.fillText(p.emoji, 96, 1140);
 
     ctx.font = '800 30px ' + font;
-    ctx.fillText(p.name + ' · ' + p.en, 184, 1145);
+    ctx.fillText(p.name + ' · ' + p.en, 186, 1110);
 
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.font = '500 23px ' + font;
-    ctx.fillText('在 ALTER 里，这是我说过的一句话。', 184, 1188);
+    ctx.fillText('在 ALTER 里，这是我说过的一句话。', 96, 1160);
+    ctx.fillText('每天 3 分钟，用英语活另一种人生。', 96, 1196);
+
+    // 扫码入口
+    drawQr(ctx, 736, 1000, 272);
 
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.font = '500 22px ' + font;
-    ctx.fillText('ALTER · 另一个我', 84, 1296);
+    ctx.fillText('ALTER · 另一个我', 84, 1300);
     var d = new Date();
     ctx.textAlign = 'right';
-    ctx.fillText(E.dayKey(d), W - 84, 1296);
+    ctx.fillText(E.dayKey(d), W - 84, 1300);
     ctx.textAlign = 'left';
 
     return canvas;
+  }
+
+  function drawQr(ctx, x, y, size) {
+    if (!window.ALTER_QR) return false;
+    var qr;
+    try { qr = window.ALTER_QR.encode(LIVE_URL); } catch (e) { return false; }
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, x, y, size, size, 22);
+    ctx.fill();
+
+    var module = Math.floor((size - 56) / qr.size);
+    var real = module * qr.size;
+    var ox = x + Math.round((size - real) / 2);
+    var oy = y + 20;
+    ctx.fillStyle = '#0a0a10';
+    for (var row = 0; row < qr.size; row++) {
+      for (var col = 0; col < qr.size; col++) {
+        if (qr.modules[row][col]) ctx.fillRect(ox + col * module, oy + row * module, module, module);
+      }
+    }
+    ctx.fillStyle = 'rgba(10,10,16,0.68)';
+    ctx.font = '700 21px "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('扫码玩这一集', x + size / 2, y + size - 20);
+    ctx.textAlign = 'left';
+    return true;
   }
 
   /* ---------------- 句子本 ---------------- */
 
   function renderBook() {
     var items = state.saved;
+    var today = todayKey();
+    var due = E.reviewDue(state, today);
+    var pending = E.reviewPending(state, today);
     var html = '<div class="screen">' +
       '<div class="section-head" style="margin-top:10px">' +
-        '<h1 class="h1">句子本</h1><span class="sub">' + items.length + ' 句</span>' +
+        '<h1 class="h1">句子本</h1><span class="sub">' + items.length + ' 句收藏</span>' +
       '</div>' +
-      '<p class="sub" style="margin:0 0 16px">这里只收你真的说出口的句子。忘了就听一遍。</p>';
+      '<div class="review-panel">' +
+        '<div class="review-head">' +
+          '<div><div class="eyebrow">复习队列</div>' +
+            '<div class="review-num">' + due.length + '<span> 句到期</span></div></div>' +
+          '<button class="btn btn-primary btn-sm" data-action="start-review"' + (due.length ? '' : ' disabled') + '>' +
+            (due.length ? '开始复习 →' : '今天已清空') + '</button>' +
+        '</div>' +
+        '<p class="sub">说错或只说“能懂”的句子会按遗忘节奏回来；在复习里答对，才会移出。</p>' +
+        (pending.length ? '<div class="review-next">另有 ' + pending.length + ' 句排队中，最早 ' + esc(pending[0].due) + ' 到期</div>' : '') +
+      '</div>' +
+      '<p class="sub" style="margin:18px 0 12px">下面是你说过、并且想留住的句子。忘了就听一遍。</p>';
 
-    if (!items.length) {
+    if (!items.length && !due.length) {
       html += '<div class="empty">还空着。<br>完成一幕之后，点「收藏这句」，<br>它就会出现在这里。</div>';
     } else {
       items.forEach(function (p, i) {
@@ -627,6 +772,111 @@
     html += '</div>';
     stage.innerHTML = html;
     updateChrome();
+  }
+
+  /* ---------------- 复习 ---------------- */
+
+  function startReview() {
+    if (C.allLoaded && !C.allLoaded()) {
+      loadAllSeasons().then(function () { startReview(); });
+      return;
+    }
+    var today = todayKey();
+    var items = E.reviewDue(state, today);
+    var list = [];
+    items.forEach(function (item) {
+      var hit = findBeat(item.beatId);
+      if (hit) list.push({ item: item, beat: hit.beat, scene: hit.scene });
+    });
+    if (!list.length) {
+      toast('现在没有到期的句子');
+      return;
+    }
+    view.review = { list: list, index: 0, correct: 0 };
+    view.screen = 'review';
+    view.selected = [];
+    view.feedback = null;
+    view.fails = 0;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function renderReview() {
+    var rev = view.review;
+    if (!rev || !rev.list.length) { view.screen = 'book'; return renderBook(); }
+    var cur = rev.list[rev.index];
+    if (!cur) { view.screen = 'reviewDone'; return render(); }
+    var beat = cur.beat;
+    var locked = view.feedback && view.feedback.passed;
+
+    var answer = view.selected.length
+      ? view.selected.map(function (chipIdx, pos) {
+          return '<button class="chip on" data-action="unpick-chip" data-pos="' + pos + '">' + esc(beat.chips[chipIdx]) + '</button>';
+        }).join('')
+      : '<span class="placeholder">再拼一次这句话…</span>';
+    var bank = beat.chips.map(function (chip, i) {
+      var used = view.selected.indexOf(i) > -1;
+      return '<button class="chip' + (used ? ' used' : '') + '" data-action="pick-chip" data-i="' + i + '">' + esc(chip) + '</button>';
+    }).join('');
+
+    stage.innerHTML = '' +
+      '<div class="screen">' +
+        '<div class="play-head">' +
+          '<button class="back-btn" data-action="go-book" aria-label="返回句子本">←</button>' +
+          '<div class="play-title">复习 · ' + (rev.index + 1) + ' / ' + rev.list.length + '</div>' +
+          '<span class="pill" style="margin-left:auto">答对移出</span>' +
+        '</div>' +
+        '<div class="progress"><i style="width:' + Math.round((rev.index / rev.list.length) * 100) + '%"></i></div>' +
+        '<div class="act-pill">来自 · ' + esc(cur.scene.cn) + '</div>' +
+        '<div class="npc">' +
+          '<div class="avatar">' + beat.avatar + '</div>' +
+          '<div class="bubble">' +
+            '<div class="name">' + esc(beat.speaker) + '</div>' +
+            '<div class="line">' + esc(beat.line) + '</div>' +
+            (view.showCn ? '<div class="cn">' + esc(beat.lineCn) + '</div>' : '') +
+            '<button class="speak-btn" data-action="speak" data-text="' + esc(beat.line) + '">🔊 听一遍</button>' +
+          '</div>' +
+        '</div>' +
+        '<p class="situation">' + esc(beat.situation) + '</p>' +
+        '<div class="mission">' +
+          '<div class="label">再说一遍</div>' +
+          '<div class="text">' + esc(beat.intent) + '</div>' +
+        '</div>' +
+        '<div class="answer-zone' + (view.selected.length ? ' filled' : '') + '">' + answer + '</div>' +
+        '<div class="bank' + (locked ? ' frozen' : '') + '">' + bank + '</div>' +
+        '<div class="play-actions">' +
+          '<button class="btn btn-ghost" data-action="clear"' + (locked ? ' disabled' : '') + '>清空</button>' +
+          '<button class="btn btn-primary" data-action="submit"' + (locked ? ' disabled' : '') + '>说出口</button>' +
+        '</div>' +
+        (view.feedback ? feedbackHtml(beat, view.feedback) : '') +
+      '</div>';
+    updateChrome();
+  }
+
+  function renderReviewDone() {
+    var rev = view.review || { list: [], correct: 0 };
+    var left = E.reviewPending(state, todayKey()).length;
+    stage.innerHTML = '' +
+      '<div class="screen review-done">' +
+        '<div class="intro-emoji">✅</div>' +
+        '<h1 class="h1">复习完成</h1>' +
+        '<p class="sub" style="margin:10px 0 20px">' + (rev.correct || 0) + ' 句过关，已经从队列里移出。' +
+          (left ? '还有 ' + left + ' 句在排队，明天再来。' : '队列清空了。') + '</p>' +
+        '<button class="btn btn-primary" data-action="go-home">回首页</button>' +
+        '<button class="btn btn-ghost" style="margin-top:10px" data-action="go-book">看待复习的句子</button>' +
+      '</div>';
+    updateChrome();
+  }
+
+  function nextReview() {
+    if (!view.review) return renderBook();
+    view.feedback = null;
+    view.selected = [];
+    view.fails = 0;
+    view.review.index += 1;
+    if (view.review.index >= view.review.list.length) view.screen = 'reviewDone';
+    render();
+    window.scrollTo(0, 0);
   }
 
   /* ---------------- 人设 ---------------- */
@@ -669,6 +919,8 @@
       case 'choice': renderChoice(); break;
       case 'result': renderResult(); break;
       case 'book': renderBook(); break;
+      case 'review': renderReview(); break;
+      case 'reviewDone': renderReviewDone(); break;
       case 'persona': renderPersona(false); break;
       default: renderHome();
     }
@@ -679,6 +931,7 @@
     view.sceneId = null;
     view.feedback = null;
     view.selected = [];
+    view.review = null;
     render();
     window.scrollTo(0, 0);
   }
@@ -725,14 +978,39 @@
   function submitAnswer() {
     if (view.feedback && view.feedback.passed) return;
     if (!view.selected.length) { toast('先点词块拼一句话'); return; }
-    var scene = byId(view.sceneId);
-    var beat = beatsOf(scene)[view.index].beat;
+    var beat = currentBeat();
+    if (!beat) return;
     var picked = view.selected.map(function (i) { return beat.chips[i]; });
     var result = E.evaluate(picked, beat);
-    var out = E.applyAnswer(state, beat, result);
+
+    if (view.screen === 'review') {
+      if (result.passed) {
+        state = E.gradeReview(state, beat.id, result, todayKey());
+        state = E.updateStreak(state, todayKey());
+        if (view.review) view.review.correct = (view.review.correct || 0) + 1;
+        view.fails = 0;
+      } else {
+        view.fails += 1;
+      }
+      persist();
+      view.feedback = result;
+      rerender();
+      setTimeout(function () {
+        var f = document.querySelector('.feedback');
+        if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 80);
+      return;
+    }
+
+    var scene = byId(view.sceneId);
+    var out = E.applyAnswer(state, beat, result, {
+      day: todayKey(),
+      sceneId: scene ? scene.id : '',
+      season: scene ? seasonOf(scene) : 1
+    });
     state = out.state;
     if (result.passed) {
-      state = E.updateStreak(state, E.dayKey(new Date()));
+      state = E.updateStreak(state, todayKey());
       view.fails = 0;
     } else {
       view.fails += 1;
@@ -747,8 +1025,8 @@
   }
 
   function fillAnswer() {
-    var scene = byId(view.sceneId);
-    var beat = beatsOf(scene)[view.index].beat;
+    var beat = currentBeat();
+    if (!beat) return;
     var need = E.wordsOf(E.bestSolution(beat).text);
     var used = [];
     var picked = [];
@@ -783,6 +1061,14 @@
         view.screen = 'book';
         render();
         window.scrollTo(0, 0);
+        break;
+
+      case 'start-review':
+        startReview();
+        break;
+
+      case 'next-review':
+        nextReview();
         break;
 
       case 'go-persona':
@@ -857,7 +1143,7 @@
         var optId = el.getAttribute('data-opt');
         var opt = null;
         scene.choice.options.forEach(function (o) { if (o.id === optId) opt = o; });
-        state = E.completeScene(state, scene.id, optId);
+        state = E.completeScene(state, scene.id, optId, todayKey());
         if (opt) state = E.recordOutcome(state, scene.id, opt.outcome);
         persist();
         view.screen = 'result';
@@ -948,7 +1234,26 @@
 
   /* ---------------- 启动 ---------------- */
 
+  function loadAllSeasons() {
+    if (!C.loadSeason) return Promise.resolve();
+    return Promise.all([C.loadSeason(2), C.loadSeason(3)]).catch(function () {
+      return null;
+    });
+  }
+
   render();
+
+  // 首屏先画第 1 季；空闲时再补第 2/3 季，避免首屏解析三个大文件。
+  function prefetchSeasons() {
+    loadAllSeasons().then(function () {
+      if (view.screen === 'home' || view.screen === 'book') rerender();
+    });
+  }
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(prefetchSeasons, { timeout: 2500 });
+  } else {
+    setTimeout(prefetchSeasons, 900);
+  }
 
   if ('serviceWorker' in navigator && /^https?:$/.test(window.location.protocol)) {
     window.addEventListener('load', function () {
