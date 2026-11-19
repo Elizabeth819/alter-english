@@ -8,6 +8,7 @@
   var E = window.ALTER_ENGINE;
   var C = window.ALTER_CONTENT;
   var SP = window.ALTER_SPEECH;
+  var AN = window.ALTER_ANALYTICS;
   var stage = document.getElementById('stage');
   if (!E || !C || !stage) {
     if (stage) stage.innerHTML = '<div class="empty">加载失败：请确认 src/ 目录完整。</div>';
@@ -71,6 +72,27 @@
   view.speechOff = readFlag(SPEECH_OFF_KEY);
   view.speechGuide = false;    // 首次引导
   var speechController = null;
+
+  /* ---------------- 本机埋点 ---------------- */
+
+  var analytics = AN ? AN.migrate(readJSON(AN.STORAGE_KEY)) : null;
+  var brandTaps = 0;
+  var brandTapStart = 0;
+
+  function readJSON(key) {
+    try { return JSON.parse(window.localStorage.getItem(key)); } catch (e) { return null; }
+  }
+
+  function saveAnalytics() {
+    if (!AN || !analytics || !hasLS) return;
+    try { window.localStorage.setItem(AN.STORAGE_KEY, JSON.stringify(analytics)); } catch (e) { /* 隐私模式忽略 */ }
+  }
+
+  function track(name, props) {
+    if (!AN || !analytics) return;
+    analytics = AN.record(analytics, name, props);
+    saveAnalytics();
+  }
 
   /* ---------------- 小工具 ---------------- */
 
@@ -315,7 +337,18 @@
         view.speechInterim = '';
         speechController = null;
         var beat = currentBeat();
-        if (beat) view.speech = SP.matchTranscript(res.transcript, beat);
+        if (beat) {
+          view.speech = SP.matchTranscript(res.transcript, beat);
+          var revCurrent = view.screen === 'review' && view.review
+            ? view.review.list[view.review.index]
+            : null;
+          track('speech_use', {
+            beatId: beat.id,
+            sceneId: revCurrent ? revCurrent.scene.id : view.sceneId,
+            status: view.speech.status,
+            mode: view.screen === 'review' ? 'review' : 'play'
+          });
+        }
         rerender();
         setTimeout(function () {
           var box = document.querySelector('.speech-result');
@@ -748,6 +781,9 @@
     if (holder) {
       var canvas = buildCard(scene, lastItem, outcome);
       holder.appendChild(canvas);
+      if (AN && analytics && !AN.hasEvent(analytics, 'card_generated', 'sceneId', scene.id)) {
+        track('card_generated', { sceneId: scene.id, season: seasonOf(scene) });
+      }
     }
     view.lastItem = lastItem;
     updateChrome();
@@ -1094,6 +1130,134 @@
     window.scrollTo(0, 0);
   }
 
+  /* ---------------- 数据页 / 家长周报 ---------------- */
+
+  function analyticsFallback() {
+    stage.innerHTML = '<div class="screen">' +
+      '<div class="play-head"><button class="back-btn" data-action="go-home" aria-label="返回">←</button>' +
+      '<div class="play-title">本机数据</div></div>' +
+      '<p class="sub">分析模块未加载，暂时看不到统计。</p>' +
+      '<button class="btn btn-primary" data-action="go-home">回首页</button></div>';
+    updateChrome();
+  }
+
+  function renderStats() {
+    if (!AN || !analytics) return analyticsFallback();
+    var s = AN.stats(analytics, { today: todayKey(), pending: dueReviewCount() });
+
+    var funnel = s.funnel.map(function (f) {
+      var width = Math.max(0, Math.min(100, f.rate));
+      return '<div class="funnel-row" data-step="' + f.key + '">' +
+        '<span class="funnel-name">' + esc(f.label) + '</span>' +
+        '<span class="funnel-count" data-count="' + f.count + '">' + f.count + '</span>' +
+        '<span class="funnel-bar"><i style="width:' + width + '%"></i></span>' +
+        '<span class="funnel-rate">' + f.rate + '%</span>' +
+      '</div>';
+    }).join('');
+
+    var bars = s.daily.map(function (d) {
+      var hgt = d.learning ? Math.min(100, 14 + d.learning * 10) : 4;
+      var tip = d.day + ' · ' + d.learning + ' 幕' + (d.opens ? ' · 打开 ' + d.opens + ' 次' : '');
+      return '<span class="day-bar' + (d.active ? ' on' : '') + '" title="' + esc(tip) + '">' +
+        '<i style="height:' + hgt + '%"></i></span>';
+    }).join('');
+
+    stage.innerHTML = '' +
+      '<div class="screen stats-screen">' +
+        '<div class="play-head">' +
+          '<button class="back-btn" data-action="go-home" aria-label="返回首页">←</button>' +
+          '<div class="play-title">本机数据</div>' +
+          '<span class="pill" style="margin-left:auto">仅自己可见</span>' +
+        '</div>' +
+        '<p class="privacy-line">所有数据只存在这台设备，不上传、不接入任何第三方统计。</p>' +
+
+        '<section class="panel">' +
+          '<div class="panel-head"><h2 class="panel-title">漏斗</h2><span class="panel-note">占打开的比例</span></div>' +
+          '<div class="funnel">' + funnel + '</div>' +
+        '</section>' +
+
+        '<section class="panel">' +
+          '<div class="panel-head"><h2 class="panel-title">行为计数</h2><span class="panel-note">本机累计</span></div>' +
+          '<div class="counter-row">' +
+            '<div><b data-counter="beats">' + s.counters.beats + '</b><span>完成幕数</span></div>' +
+            '<div><b data-counter="speech">' + s.counters.speech + '</b><span>开口说</span></div>' +
+            '<div><b data-counter="reviews">' + s.counters.reviews + '</b><span>复习清空</span></div>' +
+          '</div>' +
+        '</section>' +
+
+        '<section class="panel">' +
+          '<div class="panel-head"><h2 class="panel-title">每日活跃</h2><span class="panel-note">最近 14 天</span></div>' +
+          '<div class="day-bars">' + bars + '</div>' +
+          '<p class="sub" style="font-size:12px;margin:8px 0 0">最近 14 天打开 ' + s.activeDays + ' 天，共 ' + s.total + ' 条本机事件。</p>' +
+        '</section>' +
+
+        '<div class="stats-grid">' +
+          '<div class="stat"><b>' + s.avgBeats + '</b><span>平均每集完成幕数</span></div>' +
+          '<div class="stat"><b>' + Math.round(s.speech.ratio * 100) + '%</b><span>语音使用比例</span></div>' +
+          '<div class="stat"><b>' + Math.round(s.share.ratio * 100) + '%</b><span>分享率</span></div>' +
+          '<div class="stat"><b>' + s.total + '</b><span>事件总数 / 上限 ' + s.max + '</span></div>' +
+        '</div>' +
+
+        '<button class="btn btn-primary" data-action="go-report">打开家长周报 →</button>' +
+        '<button class="btn btn-ghost" style="margin-top:10px" data-action="export-events">导出埋点 JSON</button>' +
+        '<p class="load-hint">隐藏入口：连点左上角 ALTER 标志 5 次，或直接打开 #stats。</p>' +
+      '</div>';
+    updateChrome();
+  }
+
+  function renderReport() {
+    if (!AN || !analytics) return analyticsFallback();
+    var r = AN.weekReport(analytics, { today: todayKey(), pending: dueReviewCount() });
+    var m = r.metrics;
+    var trendText;
+    var trendCls;
+    if (r.trend.dir === 'up' && r.previous.beats > 0) {
+      trendText = '比上周多完成 ' + r.trend.delta + ' 幕';
+      trendCls = 'up';
+    } else if (r.trend.dir === 'up') {
+      trendText = '这是第一周记录';
+      trendCls = 'flat';
+    } else if (r.trend.dir === 'down') {
+      trendText = '比上周少完成 ' + Math.abs(r.trend.delta) + ' 幕';
+      trendCls = 'down';
+    } else {
+      trendText = r.previous.beats ? '与上周持平' : '这是第一周记录';
+      trendCls = 'flat';
+    }
+
+    stage.innerHTML = '' +
+      '<div class="screen report-screen">' +
+        '<div class="report-sheet">' +
+          '<div class="report-top">' +
+            '<div><div class="report-brand">ALTER · 学习周报</div>' +
+              '<div class="report-range">' + esc(r.range.from) + ' 至 ' + esc(r.range.to) + '</div></div>' +
+            '<span class="report-stamp">仅存本机</span>' +
+          '</div>' +
+          '<h1 class="report-title">这周，孩子的英语开口记录</h1>' +
+          '<p class="report-sub">只含统计，不含任何对话原文；数据未上传。</p>' +
+          '<div class="report-grid">' +
+            '<div><b data-metric="studyDays">' + m.studyDays + '</b><span>学习天数 / 7</span></div>' +
+            '<div><b data-metric="scenes">' + m.scenes + '</b><span>完成集数</span></div>' +
+            '<div><b data-metric="native">' + m.native + '</b><span>地道句</span></div>' +
+            '<div><b data-metric="speech">' + m.speech + '</b><span>开口次数</span></div>' +
+            '<div><b data-metric="reviews">' + m.reviews + '</b><span>复习清空</span></div>' +
+          '</div>' +
+          '<div class="report-trend ' + trendCls + '">本周完成 <b data-metric="beats">' + m.beats + '</b> 幕 · ' + trendText + '</div>' +
+          '<div class="report-advice">' +
+            '<div class="label">给家长的一句话</div>' +
+            '<p>' + esc(r.advice) + '</p>' +
+          '</div>' +
+          '<div class="report-foot">本页可打印或存为 PDF。ALTER 不上传任何学习数据，也不展示孩子的对话内容。</div>' +
+        '</div>' +
+        '<div class="report-actions">' +
+          '<button class="btn btn-primary" data-action="print-report">打印 / 保存 PDF</button>' +
+          '<button class="btn btn-ghost" data-action="go-stats">查看数据页</button>' +
+          '<button class="btn btn-ghost" data-action="go-home">回首页</button>' +
+        '</div>' +
+      '</div>';
+    updateChrome();
+  }
+
   /* ---------------- 人设 ---------------- */
 
   function renderPersona(gate) {
@@ -1113,7 +1277,11 @@
     html += '</div>';
     if (!gate) {
       html += '<div class="row" style="margin-top:18px"><button class="btn btn-ghost" data-action="go-home">返回</button></div>' +
-        '<div style="margin-top:28px;text-align:center"><button class="sub" data-action="reset" style="font-size:12px;text-decoration:underline">清除本机所有进度</button></div>';
+        '<div style="margin-top:28px;text-align:center">' +
+          '<button class="sub" data-action="go-report" style="font-size:12px;text-decoration:underline">家长周报 · 学习数据</button>' +
+          '<div style="height:16px"></div>' +
+          '<button class="sub" data-action="reset" style="font-size:12px;text-decoration:underline">清除本机所有进度与学习数据</button>' +
+        '</div>';
     } else {
       html += '<p class="sub" style="margin-top:16px;font-size:12px;text-align:center">随时可以在「人设」里换。</p>';
     }
@@ -1126,7 +1294,7 @@
   /* ---------------- 路由 ---------------- */
 
   function render() {
-    if (!state.persona) { renderPersona(true); return; }
+    if (!state.persona && view.screen !== 'stats' && view.screen !== 'report') { renderPersona(true); return; }
     switch (view.screen) {
       case 'home': renderHome(); break;
       case 'intro': renderIntro(); break;
@@ -1137,12 +1305,31 @@
       case 'review': renderReview(); break;
       case 'reviewDone': renderReviewDone(); break;
       case 'persona': renderPersona(false); break;
+      case 'stats': renderStats(); break;
+      case 'report': renderReport(); break;
       default: renderHome();
     }
   }
 
+  function openStats() {
+    view.screen = 'stats';
+    view.feedback = null;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function openReport() {
+    view.screen = 'report';
+    view.feedback = null;
+    render();
+    window.scrollTo(0, 0);
+  }
+
   function goHome() {
     resetSpeech();
+    if (window.location.hash) {
+      try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) { /* 忽略 */ }
+    }
     view.screen = 'home';
     view.sceneId = null;
     view.feedback = null;
@@ -1208,6 +1395,12 @@
         state = E.updateStreak(state, todayKey());
         if (view.review) view.review.correct = (view.review.correct || 0) + 1;
         view.fails = 0;
+        var revCur = view.review && view.review.list[view.review.index];
+        track('review_clear', {
+          beatId: beat.id,
+          sceneId: revCur ? revCur.scene.id : '',
+          grade: result.grade
+        });
       } else {
         view.fails += 1;
       }
@@ -1231,6 +1424,13 @@
     if (result.passed) {
       state = E.updateStreak(state, todayKey());
       view.fails = 0;
+      track('beat_complete', {
+        sceneId: scene ? scene.id : '',
+        season: scene ? seasonOf(scene) : 1,
+        beatId: beat.id,
+        grade: result.grade,
+        firstPass: out.firstPass
+      });
     } else {
       view.fails += 1;
     }
@@ -1273,8 +1473,54 @@
 
     switch (action) {
       case 'go-home':
+        if (el.classList && el.classList.contains('brand')) {
+          var tapNow = Date.now();
+          if (!brandTapStart || tapNow - brandTapStart > 3000) {
+            brandTapStart = tapNow;
+            brandTaps = 1;
+          } else {
+            brandTaps += 1;
+          }
+          if (brandTaps >= 5) {
+            brandTaps = 0;
+            brandTapStart = 0;
+            openStats();
+            break;
+          }
+        }
         goHome();
         break;
+
+      case 'go-stats':
+        openStats();
+        break;
+
+      case 'go-report':
+        openReport();
+        break;
+
+      case 'print-report':
+        try { window.print(); } catch (e) { toast('这个浏览器不支持打印'); }
+        break;
+
+      case 'export-events': {
+        if (!AN || !analytics) { toast('暂时没有可导出的数据'); break; }
+        try {
+          var blob = new Blob([AN.exportJson(analytics)], { type: 'application/json' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'alter-events-' + todayKey() + '.json';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+          toast('已导出埋点 JSON');
+        } catch (e) {
+          toast('导出失败，可换个浏览器试试');
+        }
+        break;
+      }
 
       case 'go-book':
         view.screen = 'book';
@@ -1296,27 +1542,36 @@
         window.scrollTo(0, 0);
         break;
 
-      case 'set-persona':
-        state = E.setPersona(state, el.getAttribute('data-id'));
+      case 'set-persona': {
+        var personaId = el.getAttribute('data-id');
+        if (!state.persona) track('persona_pick', { persona: personaId });
+        state = E.setPersona(state, personaId);
         persist();
         toast('已切换人设');
         view.screen = 'home';
         render();
         window.scrollTo(0, 0);
         break;
+      }
 
       case 'open-scene':
         openScene(el.getAttribute('data-id'));
         break;
 
-      case 'start-scene':
+      case 'start-scene': {
         resetSpeech();
+        var startScene = byId(view.sceneId);
+        track('scene_start', {
+          sceneId: view.sceneId,
+          season: startScene ? seasonOf(startScene) : 1
+        });
         view.screen = 'play';
         view.feedback = null;
         view.selected = [];
         render();
         window.scrollTo(0, 0);
         break;
+      }
 
       case 'pick-chip': {
         if (view.feedback && view.feedback.passed) return;
@@ -1370,6 +1625,7 @@
         scene.choice.options.forEach(function (o) { if (o.id === optId) opt = o; });
         state = E.completeScene(state, scene.id, optId, todayKey());
         if (opt) state = E.recordOutcome(state, scene.id, opt.outcome);
+        track('scene_complete', { sceneId: scene.id, season: seasonOf(scene), choice: optId });
         persist();
         view.screen = 'result';
         render();
@@ -1475,6 +1731,7 @@
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
+          track('card_saved', { sceneId: view.sceneId });
           toast('已保存名场面卡');
         } catch (e) {
           toast('这个浏览器不允许下载，试试长按保存');
@@ -1483,9 +1740,13 @@
       }
 
       case 'reset': {
-        if (!window.confirm('清除本机所有进度？句子本也会一起清空。')) return;
+        if (!window.confirm('清除本机所有进度与学习数据？句子本和分析记录也会一起清空。')) return;
         state = E.createState();
         persist();
+        if (AN) {
+          analytics = AN.createLog();
+          saveAnalytics();
+        }
         view.screen = 'persona';
         render();
         break;
@@ -1505,6 +1766,31 @@
     });
   }
 
+  function trackOpen() {
+    if (!AN || !analytics) return;
+    var today = todayKey();
+    var last = null;
+    analytics.events.forEach(function (e) {
+      if (e.name === 'app_open' && (!last || e.day > last)) last = e.day;
+    });
+    if (last && last < today) track('day2_return', { lastDay: last });
+    track('app_open');
+  }
+
+  function applyHash() {
+    var hash = String(window.location.hash || '').replace('#', '');
+    if (hash === 'stats') view.screen = 'stats';
+    else if (hash === 'report') view.screen = 'report';
+  }
+
+  window.addEventListener('hashchange', function () {
+    var hash = String(window.location.hash || '').replace('#', '');
+    if (hash === 'stats') openStats();
+    else if (hash === 'report') openReport();
+  });
+
+  applyHash();
+  trackOpen();
   render();
 
   // 首屏先画第 1 季；空闲时再补第 2/3 季，避免首屏解析三个大文件。

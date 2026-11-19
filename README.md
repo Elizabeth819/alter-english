@@ -34,7 +34,10 @@ You pick a **persona** (The Softie / The Roaster / The Wildcard). It changes the
 - Phrase book: save / replay / delete the lines you actually said
 - Built-in TTS for every NPC line (Web Speech API, no key)
 - Installable PWA with offline cache; seasons load on demand and a first-paint skeleton keeps weak networks from showing a white screen
-- 66 automated tests, zero dependencies
+- **On-device funnel log:** nine key events (open, persona, scene start, beat, scene finish, speech, card generated/saved, next-day return) stored in `localStorage`, capped at 500 events, with a JSON export. No third-party analytics, no uploads
+- **Hidden data page:** funnel conversion, 14-day activity, average beats per scene, speech-usage ratio and share rate. Open `#stats` or tap the ALTER wordmark 5 times
+- **Parent weekly report:** one printable/savable page with study days, episodes, native lines, speaking turns, review clears, week-over-week trend and one specific, data-derived suggestion. It contains statistics only — never dialogue text
+- 78 automated tests, zero dependencies
 
 **Not in scope yet:** accounts & cloud sync, LLM free chat, pronunciation scoring (we only check which words were heard), friends/leaderboards, payments. The MVP deliberately proves the core loop with no backend and no API keys.
 
@@ -54,12 +57,12 @@ No build step, no `npm install`, no environment variables, no secrets.
 ## Tests
 
 ```bash
-node tests/run.js        # 66/66 passing, Node >= 12, no dependencies
+node tests/run.js        # 78/78 passing, Node >= 12, no dependencies
 ```
 
 Or open `tests/test.html` in a browser — same suite, zero install.
 
-Coverage: scoring (5 grades, normalization, multi-answer best pick), XP anti-farming, unlock chain, scene state machine, storage migration, streak, phrase book, **daily pacing** (today's episode, next-day unlock, early-access flag, legacy state fallback), **review scheduling** (wrong → today, "ok" → +3 days, review pass removes / fail postpones), **QR generation** (finder/timing patterns, capacity guard, deterministic output), **speech matching** (contractions, connected speech/reductions, fillers, small word-order slips, several missing words, completely off-topic, empty transcript, best of multiple answers) and a **fake-recognition controller** (result, denial, abort, unsupported — no real microphone involved), **content integrity** (every reference answer must be assemblable from its chunk bank; no Chinese in English lines; tips ≤ 2 sentences; every episode declares a valid season and carries callbacks for both branches of the previous episode), and an end-to-end simulation playing all 135 turns and finishing all 15 episodes.
+Coverage: scoring (5 grades, normalization, multi-answer best pick), XP anti-farming, unlock chain, scene state machine, storage migration, streak, phrase book, **daily pacing** (today's episode, next-day unlock, early-access flag, legacy state fallback), **review scheduling** (wrong → today, "ok" → +3 days, review pass removes / fail postpones), **QR generation** (finder/timing patterns, capacity guard, deterministic output), **speech matching** (contractions, connected speech/reductions, fillers, small word-order slips, several missing words, completely off-topic, empty transcript, best of multiple answers) and a **fake-recognition controller** (result, denial, abort, unsupported — no real microphone involved), **local analytics** (event shape, privacy-field stripping, 500-event cap, malformed-log recovery, funnel/uniques, 14-day activity, per-scene averages, weekly metrics and trend, data-derived advice, JSON export), **content integrity** (every reference answer must be assemblable from its chunk bank; no Chinese in English lines; tips ≤ 2 sentences; every episode declares a valid season and carries callbacks for both branches of the previous episode), and an end-to-end simulation playing all 135 turns and finishing all 15 episodes.
 
 ## Stack
 
@@ -73,10 +76,11 @@ src/seasons/season3.js  season 3: episodes 11–15 (loaded on demand)
 src/catalog.js          merges loaded seasons into window.ALTER_CONTENT
 src/engine.js           scoring, progress, daily pacing, review queue, storage, validator
 src/speech.js           tolerant transcript matching + Web Speech recognition controller
+src/analytics.js        local funnel log, trimming, stats and weekly-report aggregation
 src/qr.js               fixed-version QR encoder (share card link, zero deps)
-src/app.js              UI: routing, rendering, events, speech flow, canvas card, TTS
+src/app.js              UI: routing, rendering, events, speech flow, stats/report, canvas card, TTS
 src/styles.css          all styles
-tests/                  harness + 66 specs + node/browser runners
+tests/                  harness + 78 specs + node/browser runners
 docs/product.md         product thinking (Chinese)
 docs/README.zh-CN.md    full Chinese guide
 ```
@@ -87,12 +91,13 @@ Append an object to the last season file (or add a new season file and register 
 
 ## Status
 
-v1.2 — speaking pass. You can now say the assembled line out loud; browser speech recognition feeds a tolerant matcher that runs entirely on-device, with automatic fallback to chip submission and a one-time privacy guide. Daily pacing, review queue, QR share card and offline cache remain. 15 episodes playable end to end. Next: adaptive hints based on past accuracy, pronunciation-level feedback, share-link challenges, then accounts and cloud sync.
+v1.3 — measurement pass. A local, capped funnel log now records the key steps; a hidden data page shows conversion, 14-day activity, average beats per scene, speech usage and share rate; a printable parent weekly report summarizes the last 7 days and ends with one specific, data-derived suggestion. Nothing is uploaded and no conversation text appears in reports. 78 tests, 15 episodes playable end to end. Next: adaptive hints based on past accuracy, pronunciation-level feedback, share-link challenges, then accounts and cloud sync.
 
 ## Notes
 
 - The UI is in Simplified Chinese by design — the learners are Chinese students; the **learning content is English**.
-- No accounts, no analytics, no network requests. Progress lives in `localStorage` and can be erased in-app.
+- No accounts, no third-party analytics, no network requests. Progress and the local event log live in `localStorage`, are capped at 500 events, and can be exported as JSON or erased in-app. The parent report reads only these local counters — never dialogue text.
+- Hidden data page: open `#stats` (or `#report`) in the URL, or tap the ALTER wordmark five times. The parent report is also linked at the bottom of the persona page.
 - Speech: we never record, upload or store audio; recognition is performed by the browser and only the resulting text is compared locally. Speech is optional and can be turned off at any time.
 - Speech volume/voice depends on the OS; no cloud TTS is used.
 

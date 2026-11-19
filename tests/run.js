@@ -9,10 +9,11 @@ var E = require('../src/engine.js');
 var C = require('../src/catalog.js');
 var QR = require('../src/qr.js');
 var SP = require('../src/speech.js');
+var AN = require('../src/analytics.js');
 var register = require('./spec.js');
 
 var h = TEST.create();
-register(h, E, C, QR, SP);
+register(h, E, C, QR, SP, AN);
 
 var res = h.run();
 

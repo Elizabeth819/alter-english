@@ -4,7 +4,7 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory;
   else root.registerAlterTests = factory;
-})(typeof self !== 'undefined' ? self : this, function (h, E, C, QR, SP) {
+})(typeof self !== 'undefined' ? self : this, function (h, E, C, QR, SP, AN) {
   'use strict';
 
   var SCENES = C.SCENES;
@@ -697,5 +697,214 @@
     FakeRecognition.last.onend();
     h.eq(FakeRecognition.last.aborted, true);
     h.eq(called, 0);
+  });
+
+  /* ---------------- 14. 本机埋点与周报 ---------------- */
+
+  var at = function (log, name, props, day) {
+    return AN.record(log, name, props, { now: new Date(2026, 10, 19, 9, 0, 0), day: day || '2026-11-19' });
+  };
+
+  h.test('埋点：记录事件名、本地日期与时间戳', function () {
+    var log = at(AN.createLog(), 'app_open');
+    h.eq(log.events.length, 1);
+    h.eq(log.events[0].name, 'app_open');
+    h.eq(log.events[0].day, '2026-11-19');
+    h.ok(log.events[0].t > 0, '应写入时间戳');
+  });
+
+  h.test('埋点：对话原文等隐私字段绝不落库', function () {
+    var log = at(AN.createLog(), 'beat_complete', {
+      beatId: 'b1',
+      grade: 'native',
+      firstPass: true,
+      text: 'No, it is all yours.',
+      line: 'Is this seat taken?',
+      transcript: 'no it is all yours'
+    });
+    var p = log.events[0].props;
+    h.eq(p.beatId, 'b1');
+    h.eq(p.grade, 'native');
+    h.eq(p.firstPass, true);
+    h.eq(p.text, undefined);
+    h.eq(p.line, undefined);
+    h.eq(p.transcript, undefined);
+  });
+
+  h.test('埋点：超过上限自动裁剪，保留最新事件', function () {
+    var log = AN.createLog();
+    for (var i = 0; i < AN.MAX_EVENTS + 25; i++) {
+      log = at(log, 'app_open', { i: i });
+    }
+    h.eq(log.events.length, AN.MAX_EVENTS);
+    h.eq(log.events[0].props.i, 25);
+    h.eq(log.events[log.events.length - 1].props.i, AN.MAX_EVENTS + 24);
+  });
+
+  h.test('埋点：迁移丢弃坏事件，坏数据不崩', function () {
+    var log = AN.migrate({
+      version: 1,
+      events: [
+        { name: 'app_open', day: '2026-11-19', t: 1 },
+        { name: '', day: '2026-11-19', t: 2 },
+        { name: 'beat_complete', day: 'not-a-day', t: 3 },
+        { name: 'scene_start', day: '2026-11-19' },
+        { name: 'scene_complete', day: '2026-11-19', t: 4, props: { sceneId: 's1' } }
+      ]
+    });
+    h.eq(log.events.length, 2);
+    h.eq(log.events[1].props.sceneId, 's1');
+    h.eq(AN.migrate('bad data').events.length, 0);
+  });
+
+  h.test('漏斗：各步计数与占打开的转化率', function () {
+    var log = AN.createLog();
+    log = at(log, 'app_open'); log = at(log, 'app_open'); log = at(log, 'app_open');
+    log = at(log, 'persona_pick', { persona: 'soft' });
+    log = at(log, 'scene_start', { sceneId: 's1' });
+    log = at(log, 'scene_start', { sceneId: 's2' });
+    log = at(log, 'beat_complete', { sceneId: 's1', beatId: 'b1', grade: 'native', firstPass: true });
+    log = at(log, 'beat_complete', { sceneId: 's1', beatId: 'b2', grade: 'ok', firstPass: true });
+    log = at(log, 'beat_complete', { sceneId: 's2', beatId: 'b3', grade: 'native', firstPass: true });
+    log = at(log, 'scene_complete', { sceneId: 's1' });
+    log = at(log, 'scene_complete', { sceneId: 's2' });
+    log = at(log, 'speech_use', { beatId: 'b1' });
+    log = at(log, 'speech_use', { beatId: 'b2' });
+    log = at(log, 'card_generated', { sceneId: 's1' });
+    log = at(log, 'card_saved', { sceneId: 's1' });
+    log = at(log, 'day2_return');
+
+    var f = AN.funnel(log);
+    var byKey = {};
+    f.forEach(function (x) { byKey[x.key] = x; });
+    h.eq(byKey.open.count, 3);
+    h.eq(byKey.persona.count, 1);
+    h.eq(byKey.sceneStart.count, 2);
+    h.eq(byKey.scene.count, 2);
+    h.eq(byKey.card.count, 1);
+    h.eq(byKey.save.count, 1);
+    h.eq(byKey.return.count, 1);
+    h.eq(byKey.open.rate, 100);
+    h.eq(byKey.persona.rate, 33);
+    h.eq(byKey.sceneStart.rate, 67);
+    h.eq(byKey.scene.rate, 67);
+    var s = AN.stats(log, { today: '2026-11-19' });
+    h.eq(s.counters.beats, 3);
+    h.eq(s.counters.speech, 2);
+    h.eq(s.counters.reviews, 0);
+    h.ok(AN.hasEvent(log, 'card_generated', 'sceneId', 's1'));
+    h.eq(AN.hasEvent(log, 'card_generated', 'sceneId', 's2'), false);
+  });
+
+  h.test('每日活跃：只统计最近 N 天', function () {
+    var log = AN.createLog();
+    log = at(log, 'app_open', null, '2026-11-19');
+    log = at(log, 'app_open', null, '2026-11-19');
+    log = at(log, 'beat_complete', { beatId: 'b1' }, '2026-11-19');
+    log = at(log, 'app_open', null, '2026-11-17');
+    log = at(log, 'app_open', null, '2026-11-01');
+
+    var d = AN.daily(log, 7, { today: '2026-11-19' });
+    h.eq(d.length, 7);
+    h.eq(d[0].day, '2026-11-13');
+    h.eq(d[6].day, '2026-11-19');
+    h.eq(d[6].opens, 2);
+    h.eq(d[6].learning, 1);
+    h.eq(d[4].day, '2026-11-17');
+    h.eq(d[4].active, true);
+    var active = d.filter(function (x) { return x.active; }).length;
+    h.eq(active, 2);
+  });
+
+  h.test('数据页指标：平均幕数、语音比例、分享率', function () {
+    var log = AN.createLog();
+    log = at(log, 'scene_start', { sceneId: 's1' });
+    log = at(log, 'scene_start', { sceneId: 's2' });
+    log = at(log, 'beat_complete', { sceneId: 's1', beatId: 'b1' });
+    log = at(log, 'beat_complete', { sceneId: 's1', beatId: 'b2' });
+    log = at(log, 'beat_complete', { sceneId: 's1', beatId: 'b3' });
+    log = at(log, 'beat_complete', { sceneId: 's2', beatId: 'b4' });
+    log = at(log, 'speech_use', { beatId: 'b1' });
+    log = at(log, 'speech_use', { beatId: 'b2' });
+    log = at(log, 'scene_complete', { sceneId: 's1' });
+    log = at(log, 'scene_complete', { sceneId: 's2' });
+    log = at(log, 'card_saved', { sceneId: 's1' });
+
+    h.eq(AN.avgBeatsPerScene(log), 2);
+    h.deepEq(AN.speechUsage(log), { uses: 2, beats: 4, ratio: 0.5 });
+    h.deepEq(AN.shareRate(log), { saved: 1, completed: 2, ratio: 0.5 });
+
+    var empty = AN.createLog();
+    h.eq(AN.avgBeatsPerScene(empty), 0);
+    h.eq(AN.speechUsage(empty).ratio, 0);
+    h.eq(AN.shareRate(empty).ratio, 0);
+  });
+
+  h.test('周报：7 天窗口内指标正确，并与上周比较', function () {
+    var log = AN.createLog();
+    // 本周（11-13 ~ 11-19）
+    log = at(log, 'beat_complete', { beatId: 'b1', grade: 'native', firstPass: true }, '2026-11-18');
+    log = at(log, 'beat_complete', { beatId: 'b2', grade: 'ok', firstPass: true }, '2026-11-18');
+    log = at(log, 'beat_complete', { beatId: 'b3', grade: 'ok', firstPass: true }, '2026-11-19');
+    log = at(log, 'scene_complete', { sceneId: 's1' }, '2026-11-18');
+    log = at(log, 'scene_complete', { sceneId: 's2' }, '2026-11-19');
+    log = at(log, 'speech_use', { beatId: 'b1' }, '2026-11-18');
+    log = at(log, 'speech_use', { beatId: 'b2' }, '2026-11-19');
+    log = at(log, 'review_clear', { beatId: 'r1' }, '2026-11-19');
+    // 上周（11-06 ~ 11-12）
+    log = at(log, 'beat_complete', { beatId: 'p1' }, '2026-11-10');
+    log = at(log, 'beat_complete', { beatId: 'p2' }, '2026-11-11');
+
+    var r = AN.weekReport(log, { today: '2026-11-19', pending: 2 });
+    h.eq(r.range.from, '2026-11-13');
+    h.eq(r.range.to, '2026-11-19');
+    h.eq(r.metrics.studyDays, 2);
+    h.eq(r.metrics.beats, 3);
+    h.eq(r.metrics.scenes, 2);
+    h.eq(r.metrics.native, 1);
+    h.eq(r.metrics.speech, 2);
+    h.eq(r.metrics.reviews, 1);
+    h.eq(r.previous.beats, 2);
+    h.eq(r.trend.dir, 'up');
+    h.eq(r.trend.delta, 1);
+    h.eq(r.pending, 2);
+    h.ok(/2 天/.test(r.advice), '建议应基于真实学习天数');
+    h.eq(JSON.stringify(r).indexOf('transcript'), -1);
+  });
+
+  h.test('周报：窗口外的事件不计入本周', function () {
+    var log = AN.createLog();
+    log = at(log, 'beat_complete', { beatId: 'old' }, '2026-11-12');
+    var r = AN.weekReport(log, { today: '2026-11-19' });
+    h.eq(r.metrics.beats, 0);
+    h.eq(r.previous.beats, 1);
+    h.eq(r.trend.dir, 'down');
+    h.eq(r.hasData, false);
+  });
+
+  h.test('周报：开口太少时给出具体可执行的建议', function () {
+    var log = AN.createLog();
+    for (var i = 1; i <= 8; i++) {
+      log = at(log, 'beat_complete', { beatId: 'b' + i, grade: 'ok', firstPass: true }, '2026-11-' + (15 + (i % 3)));
+    }
+    var r = AN.weekReport(log, { today: '2026-11-19' });
+    h.eq(r.metrics.studyDays, 3);
+    h.ok(/开口/.test(r.advice), '低开口率应优先建议开口');
+    h.ok(/8/.test(r.advice), '建议应带上本周完成幕数');
+  });
+
+  h.test('周报：没有数据时给温和的起步建议', function () {
+    var r = AN.weekReport(AN.createLog(), { today: '2026-11-19' });
+    h.eq(r.hasData, false);
+    h.ok(/还没有学习记录/.test(r.advice));
+  });
+
+  h.test('导出：JSON 可解析、带上限与条数、不含隐私字段', function () {
+    var log = at(AN.createLog(), 'beat_complete', { beatId: 'b1', text: 'secret' });
+    var data = JSON.parse(AN.exportJson(log));
+    h.eq(data.app, 'ALTER');
+    h.eq(data.count, 1);
+    h.eq(data.events.length, 1);
+    h.eq(JSON.stringify(data).indexOf('secret'), -1);
   });
 });
