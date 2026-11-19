@@ -466,6 +466,11 @@
   }
 
   function renderHome() {
+    if (C.allLoaded && !C.allLoaded()) {
+      loadAllSeasons().then(function () {
+        if (view.screen === 'home') rerender();
+      });
+    }
     var t = E.totalStats(state, SCENES);
     var today = todayKey();
     var plan = E.dailyEpisode(state, SCENES, today);
