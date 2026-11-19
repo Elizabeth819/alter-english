@@ -113,7 +113,7 @@ trial/
 | 隐私字段 | 事件 `props` 出现 `text/line/transcript/heard/solution/intent/situation/prompt/note` 任一键即告警并剔除该键 |
 | 事件上限 | `count === 500` 标注“可能被裁剪”，结论里降权 |
 
-### 2.5 本次最小改动（已实现，待线上复验）
+### 2.5 本次最小改动（已上线）
 
 | 改动 | 位置 | 说明 |
 | --- | --- | --- |
