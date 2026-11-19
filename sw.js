@@ -1,15 +1,13 @@
 /* ALTER Service Worker —— 让 PWA 可安装、可离线、弱网不白屏。
  * 仅在 http/https 下注册；直接双击 index.html（file://）时不会启用，也不影响使用。
  */
-var CACHE = 'alter-shell-v5';
+var CACHE = 'alter-shell-v6';
 var ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './src/styles.css',
   './src/content.js',
-  './src/seasons/season2.js',
-  './src/seasons/season3.js',
   './src/catalog.js',
   './src/engine.js',
   './src/speech.js',

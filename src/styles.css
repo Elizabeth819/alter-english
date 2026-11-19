@@ -10,7 +10,7 @@
   --line: rgba(255, 255, 255, 0.1);
   --text: #f4f4f8;
   --muted: #9a9aae;
-  --muted-2: #6e6e83;
+  --muted-2: #8b8ba1;
   --lime: #c9f75d;
   --violet: #a78bfa;
   --pink: #ff7ab8;
@@ -50,6 +50,12 @@ button {
   padding: 0;
 }
 
+:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 .bg-glow {
   position: fixed;
   inset: 0;
@@ -85,6 +91,9 @@ button {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   font-size: 20px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -113,8 +122,8 @@ button {
 .pill.hot { color: var(--amber); }
 
 .icon-btn {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -191,7 +200,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 
 .btn-sm {
   width: auto;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   font-size: 13px;
   border-radius: 12px;
@@ -341,15 +350,15 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 }
 
 .back-btn {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   display: grid;
   place-items: center;
   font-size: 16px;
-  flex: 0 0 38px;
+  flex: 0 0 44px;
 }
 
 .play-title { font-size: 13px; font-weight: 700; color: var(--muted); }
@@ -435,14 +444,15 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .speak-btn {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 5px;
-  margin-top: 9px;
+  margin-top: 6px;
   font-size: 12px;
   font-weight: 700;
   color: var(--lime);
   background: rgba(201, 247, 93, 0.1);
   border-radius: 999px;
-  padding: 4px 11px;
+  padding: 0 14px;
 }
 
 .situation {
@@ -461,7 +471,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 }
 
 .mission .label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.16em;
   color: var(--violet);
@@ -494,6 +504,9 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .bank { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 9px 14px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.075);
@@ -621,8 +634,24 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 .speech-open:active { transform: scale(0.98); }
 
 .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
   font-size: 12px;
   color: var(--muted-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--muted);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -938,6 +967,48 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 
 /* ---------------- 人设 ---------------- */
 
+.demo-line {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0 2px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line);
+}
+
+.demo-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+
+.demo-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 22px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.demo-row.you .demo-tag { background: rgba(201, 247, 93, 0.16); color: var(--lime); }
+
+.demo-q { color: var(--muted); }
+
+.demo-a { color: var(--text); font-weight: 700; }
+
+.demo-grade {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--lime);
+  color: #101408;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .persona-list { display: grid; gap: 10px; margin-top: 16px; }
 
 .persona-card {
@@ -1150,6 +1221,10 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 
 .tab {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
   padding: 9px 0;
   font-size: 12px;
   font-weight: 700;
@@ -1159,6 +1234,13 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
 }
 
 .tab.on { color: var(--lime); background: rgba(201, 247, 93, 0.08); }
+
+/* 首次进入：先看清产品，再选人设 */
+.first-run .topstats,
+.first-run .icon-btn,
+.first-run .tabbar { display: none; }
+
+.first-run .app { padding-bottom: 28px; }
 
 /* ---------------- toast ---------------- */
 

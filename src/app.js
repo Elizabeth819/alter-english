@@ -11,7 +11,10 @@
   var AN = window.ALTER_ANALYTICS;
   var stage = document.getElementById('stage');
   if (!E || !C || !stage) {
-    if (stage) stage.innerHTML = '<div class="empty">加载失败：请确认 src/ 目录完整。</div>';
+    if (stage) {
+      stage.innerHTML = '<div class="empty"><b>页面没加载完整</b><br>刷新一次通常就能好。<br>' +
+        '<a class="btn btn-ghost btn-sm" href="./" style="margin-top:14px;display:inline-flex">刷新重试</a></div>';
+    }
     return;
   }
 
@@ -281,10 +284,10 @@
 
   function speechGuideHtml() {
     return '' +
-      '<div class="sheet-mask" data-action="close-speech-guide">' +
+      '<div class="sheet-mask" data-action="close-speech-guide" role="dialog" aria-modal="true" aria-labelledby="speech-guide-title">' +
         '<div class="sheet" data-action="sheet-keep">' +
           '<div class="sheet-emoji">🎙</div>' +
-          '<h2 class="sheet-title">先开口，再谈说得对不对</h2>' +
+          '<h2 class="sheet-title" id="speech-guide-title">先开口，再谈说得对不对</h2>' +
           '<p class="sheet-sub">词块能拼对，不代表嘴上说得出。念一遍，才算真的会。</p>' +
           '<ul class="guide-list">' +
             '<li><b>会弹一次授权</b>点“开始说”后，浏览器会问你是否允许使用麦克风。</li>' +
@@ -312,9 +315,22 @@
     if (!readFlag(SPEECH_INTRO_KEY)) {
       view.speechGuide = true;
       rerender();
+      setTimeout(function () {
+        var btn = document.querySelector('[data-action="speech-allow"]');
+        if (btn) btn.focus();
+      }, 30);
       return;
     }
     beginListening();
+  }
+
+  function closeSpeechGuide() {
+    view.speechGuide = false;
+    rerender();
+    setTimeout(function () {
+      var btn = document.querySelector('[data-action="start-speech"]');
+      if (btn) btn.focus();
+    }, 20);
   }
 
   function beginListening() {
@@ -324,6 +340,10 @@
     view.speechInterim = '';
     view.speechState = 'listening';
     render();
+    setTimeout(function () {
+      var btn = document.querySelector('[data-action="cancel-speech"]');
+      if (btn) btn.focus();
+    }, 30);
     speechController = SP.createController({ window: window });
 
     var started = speechController.start({
@@ -563,6 +583,8 @@
     var recall = E.sceneCallback(state, SCENES, scene.id);
     var scIndex = sceneIndexOf(scene.id);
     var timing = E.sceneTiming(state, SCENES, scIndex, todayKey());
+    var plan = E.dailyEpisode(state, SCENES, todayKey());
+    var isToday = !!(plan && plan.scene && plan.scene.id === scene.id);
 
     stage.innerHTML = '' +
       '<div class="screen intro-wrap">' +
@@ -570,6 +592,7 @@
           '<button class="back-btn" data-action="go-home" aria-label="返回">←</button>' +
           '<div class="play-title">' + seasonTitle(seasonOf(scene)) + ' · 第 ' + (scIndex + 1) + ' 集 / ' + SCENES.length + '</div>' +
         '</div>' +
+        (isToday ? '<div class="eyebrow" style="margin-top:2px">今天的 3 分钟</div>' : '') +
         '<div class="intro-emoji">' + scene.emoji + '</div>' +
         '<h1 class="intro-title">' + esc(scene.cn) + '</h1>' +
         '<div class="intro-cn">' + esc(scene.title) + '</div>' +
@@ -837,6 +860,8 @@
     canvas.width = W;
     canvas.height = H;
     canvas.className = 'card-preview';
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', '名场面分享卡：' + (scene.cn || scene.title || ''));
     var ctx = canvas.getContext('2d');
     var p = persona();
     var idx = sceneIndexOf(scene.id);
@@ -1181,25 +1206,25 @@
           '<div class="counter-row">' +
             '<div><b data-counter="beats">' + s.counters.beats + '</b><span>完成幕数</span></div>' +
             '<div><b data-counter="speech">' + s.counters.speech + '</b><span>开口说</span></div>' +
-            '<div><b data-counter="reviews">' + s.counters.reviews + '</b><span>复习清空</span></div>' +
+            '<div><b data-counter="reviews">' + s.counters.reviews + '</b><span>复习完成</span></div>' +
           '</div>' +
         '</section>' +
 
         '<section class="panel">' +
           '<div class="panel-head"><h2 class="panel-title">每日活跃</h2><span class="panel-note">最近 14 天</span></div>' +
-          '<div class="day-bars">' + bars + '</div>' +
+          '<div class="day-bars" aria-hidden="true">' + bars + '</div>' +
           '<p class="sub" style="font-size:12px;margin:8px 0 0">最近 14 天打开 ' + s.activeDays + ' 天，共 ' + s.total + ' 条本机事件。</p>' +
         '</section>' +
 
         '<div class="stats-grid">' +
           '<div class="stat"><b>' + s.avgBeats + '</b><span>平均每集完成幕数</span></div>' +
-          '<div class="stat"><b>' + Math.round(s.speech.ratio * 100) + '%</b><span>语音使用比例</span></div>' +
-          '<div class="stat"><b>' + Math.round(s.share.ratio * 100) + '%</b><span>分享率</span></div>' +
-          '<div class="stat"><b>' + s.total + '</b><span>事件总数 / 上限 ' + s.max + '</span></div>' +
+          '<div class="stat"><b>' + Math.round(s.speech.ratio * 100) + '%</b><span>开口说比例</span></div>' +
+          '<div class="stat"><b>' + Math.round(s.share.ratio * 100) + '%</b><span>分享卡保存率</span></div>' +
+          '<div class="stat"><b>' + s.total + '</b><span>本机记录 / 上限 ' + s.max + '</span></div>' +
         '</div>' +
 
         '<button class="btn btn-primary" data-action="go-report">打开家长周报 →</button>' +
-        '<button class="btn btn-ghost" style="margin-top:10px" data-action="export-events">导出埋点 JSON</button>' +
+        '<button class="btn btn-ghost" style="margin-top:10px" data-action="export-events">导出学习数据 JSON</button>' +
         '<p class="load-hint">隐藏入口：连点左上角 ALTER 标志 5 次，或直接打开 #stats。</p>' +
       '</div>';
     updateChrome();
@@ -1240,7 +1265,7 @@
             '<div><b data-metric="scenes">' + m.scenes + '</b><span>完成集数</span></div>' +
             '<div><b data-metric="native">' + m.native + '</b><span>地道句</span></div>' +
             '<div><b data-metric="speech">' + m.speech + '</b><span>开口次数</span></div>' +
-            '<div><b data-metric="reviews">' + m.reviews + '</b><span>复习清空</span></div>' +
+            '<div><b data-metric="reviews">' + m.reviews + '</b><span>复习完成句数</span></div>' +
           '</div>' +
           '<div class="report-trend ' + trendCls + '">本周完成 <b data-metric="beats">' + m.beats + '</b> 幕 · ' + trendText + '</div>' +
           '<div class="report-advice">' +
@@ -1261,10 +1286,15 @@
   /* ---------------- 人设 ---------------- */
 
   function renderPersona(gate) {
-    var html = '<div class="screen">' +
-      '<div class="eyebrow" style="margin-top:14px">你的英语分身</div>' +
+    var html = '<div class="screen gate-screen">' +
+      '<div class="eyebrow" style="margin-top:14px">英语剧情练习 · 每天 3 分钟</div>' +
       '<h1 class="h1" style="margin-top:8px">在英语里，<br>你想成为谁？</h1>' +
-      '<p class="sub" style="margin-top:10px">同一句话，可以选择温柔、犀利或好笑。人设决定别人怎么看你说的话，也决定每一集结尾的那句旁白。</p>' +
+      '<p class="sub" style="margin-top:10px">演一集：用词块拼出台词，再开口说出来。同一句话，温柔、犀利或好笑都行——先选一个你想成为的人。</p>' +
+      '<div class="demo-line" aria-label="示例对话：Is this seat taken？回答 No, it is all yours，判定地道，加 10 点经验">' +
+        '<div class="demo-row"><span class="demo-tag">对方</span><span class="demo-q">Is this seat taken?</span></div>' +
+        '<div class="demo-row you"><span class="demo-tag">你</span><span class="demo-a">No, it’s all yours.</span>' +
+          '<span class="demo-grade">地道 +10</span></div>' +
+      '</div>' +
       '<div class="persona-list">';
 
     PERSONAS.forEach(function (p) {
@@ -1278,12 +1308,12 @@
     if (!gate) {
       html += '<div class="row" style="margin-top:18px"><button class="btn btn-ghost" data-action="go-home">返回</button></div>' +
         '<div style="margin-top:28px;text-align:center">' +
-          '<button class="sub" data-action="go-report" style="font-size:12px;text-decoration:underline">家长周报 · 学习数据</button>' +
-          '<div style="height:16px"></div>' +
-          '<button class="sub" data-action="reset" style="font-size:12px;text-decoration:underline">清除本机所有进度与学习数据</button>' +
+          '<button class="link-btn" data-action="go-report">家长周报 · 学习数据</button>' +
+          '<div style="height:10px"></div>' +
+          '<button class="link-btn" data-action="reset">清除本机所有进度与学习数据</button>' +
         '</div>';
     } else {
-      html += '<p class="sub" style="margin-top:16px;font-size:12px;text-align:center">随时可以在「人设」里换。</p>';
+      html += '<p class="sub" style="margin-top:16px;font-size:12px;text-align:center">选好后直接进入今天的 3 分钟。人设之后随时能换。</p>';
     }
     html += '</div>';
 
@@ -1294,7 +1324,9 @@
   /* ---------------- 路由 ---------------- */
 
   function render() {
-    if (!state.persona && view.screen !== 'stats' && view.screen !== 'report') { renderPersona(true); return; }
+    var firstRun = !state.persona;
+    document.body.classList.toggle('first-run', firstRun);
+    if (firstRun && view.screen !== 'stats' && view.screen !== 'report') { renderPersona(true); return; }
     switch (view.screen) {
       case 'home': renderHome(); break;
       case 'intro': renderIntro(); break;
@@ -1544,9 +1576,18 @@
 
       case 'set-persona': {
         var personaId = el.getAttribute('data-id');
-        if (!state.persona) track('persona_pick', { persona: personaId });
+        var firstPick = !state.persona;
+        if (firstPick) track('persona_pick', { persona: personaId });
         state = E.setPersona(state, personaId);
         persist();
+        if (firstPick) {
+          var firstPlan = E.dailyEpisode(state, SCENES, todayKey());
+          if (firstPlan && firstPlan.status !== 'complete' && firstPlan.scene) {
+            toast('人设已就位');
+            openScene(firstPlan.scene.id);
+            break;
+          }
+        }
         toast('已切换人设');
         view.screen = 'home';
         render();
@@ -1647,8 +1688,7 @@
         break;
 
       case 'close-speech-guide':
-        view.speechGuide = false;
-        rerender();
+        closeSpeechGuide();
         break;
 
       case 'cancel-speech':
@@ -1789,21 +1829,34 @@
     else if (hash === 'report') openReport();
   });
 
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' && e.key !== 'Esc') return;
+    if (view.speechGuide) { closeSpeechGuide(); return; }
+    if (view.speechState === 'listening') cancelSpeech();
+  });
+
   applyHash();
   trackOpen();
   render();
 
-  // 首屏先画第 1 季；空闲时再补第 2/3 季，避免首屏解析三个大文件。
+  // 首屏先画第 1 季；首屏稳定后再补第 2/3 季，弱网/省流量时干脆不预取。
   function prefetchSeasons() {
     loadAllSeasons().then(function () {
       if (view.screen === 'home' || view.screen === 'book') rerender();
     });
   }
-  if (window.requestIdleCallback) {
-    window.requestIdleCallback(prefetchSeasons, { timeout: 2500 });
-  } else {
-    setTimeout(prefetchSeasons, 900);
+
+  function shouldPrefetch() {
+    var c = navigator.connection;
+    if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) return false;
+    return true;
   }
+
+  setTimeout(function () {
+    if (!shouldPrefetch()) return;
+    if (window.requestIdleCallback) window.requestIdleCallback(prefetchSeasons, { timeout: 2000 });
+    else prefetchSeasons();
+  }, 2600);
 
   if ('serviceWorker' in navigator && /^https?:$/.test(window.location.protocol)) {
     window.addEventListener('load', function () {
